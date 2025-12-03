@@ -37,13 +37,15 @@ export class LODSystem {
     };
 
     // Screen size thresholds (in pixels)
+    // OPTIMIZED FOR LARGER SPRITES: Increased thresholds to match new sprite sizes
+    // Stars: 1000x1000, Planets: 600x600, Moons: 240x240, Asteroids: 300x300
     this.SCREEN_SIZE_THRESHOLDS = {
-      ULTRA: 100,     // >100px on screen = ultra detail
-      HIGH: 50,       // 50-100px = high detail
-      MEDIUM: 20,     // 20-50px = medium detail
-      LOW: 10,        // 10-20px = low detail
-      MINIMAL: 3,     // 3-10px = minimal detail
-      HIDDEN: 1       // <3px = don't render
+      ULTRA: 200,     // >200px on screen = ultra detail (full quality for large sprites)
+      HIGH: 100,      // 100-200px = high detail (still very detailed)
+      MEDIUM: 50,     // 50-100px = medium detail (good quality)
+      LOW: 25,        // 25-50px = low detail (simplified rendering)
+      MINIMAL: 10,    // 10-25px = minimal detail (basic shape only)
+      HIDDEN: 3       // <10px = don't render (too small to see)
     };
 
     // Performance-based LOD adjustment

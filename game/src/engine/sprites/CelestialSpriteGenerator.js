@@ -1,218 +1,274 @@
 /**
- * CelestialSpriteGenerator - New heavily pixelated celestial body sprites
+ * CelestialSpriteGenerator - File-based sprite loading system
  *
- * Completely rewritten to generate realistic, heavily pixelated sprites
- * with proper colors, glowing stars, and 3D spherical bodies
+ * Loads pre-generated ultra-detailed celestial body sprites from PNG files
+ * - 80 unique sprites per planet type
+ * - All stellar classifications
+ * - Ultra-realistic 3D appearance with Phong shading
+ * - Heavily pixelated with thousands of tiny pixels
+ * - Complex geological features and animated textures
  */
 
-import { NewCelestialSpriteGenerator } from './NewCelestialSpriteGenerator.js';
+import { SpriteFileLoader } from './SpriteFileLoader.js';
 
 export class CelestialSpriteGenerator {
   constructor() {
-    this.generator = new NewCelestialSpriteGenerator();
+    this.spriteLoader = new SpriteFileLoader();
     this.spriteCache = new Map();
     // Alias for compatibility with SpriteRenderer
     this.spriteSheets = this.spriteCache;
+    this.libraryLoaded = false;
+
+    console.log('[CelestialSpriteGenerator] Initialized with file-based sprite loading');
   }
 
   /**
-   * Generate star sprite with glow and complex surface
+   * Load the sprite library (loads manifest from disk)
+   * @param {Function} progressCallback - Optional callback(progress, stage) for tracking
+   */
+  async loadLibrary(progressCallback = null) {
+    if (this.libraryLoaded) {
+      console.log('[CelestialSpriteGenerator] Library already loaded');
+      return true;
+    }
+
+    console.log('[CelestialSpriteGenerator] Loading sprite manifest...');
+
+    if (progressCallback) {
+      progressCallback(10, 'Loading sprite manifest');
+    }
+
+    const hasSprites = await this.spriteLoader.hasSprites();
+
+    if (hasSprites) {
+      this.libraryLoaded = true;
+      const stats = this.spriteLoader.getStats();
+      console.log('[CelestialSpriteGenerator] ✓ Sprite library loaded successfully');
+      console.log('[CelestialSpriteGenerator] Library stats:', stats);
+
+      if (progressCallback) {
+        progressCallback(100, 'Sprite library ready');
+      }
+
+      return true;
+    } else {
+      console.error('[CelestialSpriteGenerator] Failed to load sprite library');
+
+      if (progressCallback) {
+        progressCallback(0, 'Failed to load sprites');
+      }
+
+      return false;
+    }
+  }
+
+  /**
+   * Check if library is loaded and ready
+   */
+  isLibraryReady() {
+    return this.libraryLoaded;
+  }
+
+  /**
+   * Configure library (compatibility method - no-op for file-based loading)
+   */
+  configureLibrary(options = {}) {
+    console.log('[CelestialSpriteGenerator] Configuration options ignored (file-based loading)');
+    return this;
+  }
+
+  /**
+   * Generate star sprite by loading from file
    */
   async generateStarSprite(config) {
     const {
       stellarClass = 'G',
       radius = 256,
-      pixelSize = 1,  // Small pixels for heavy pixelation
       seed = Math.random() * 10000
     } = config;
 
-    // Use same cache key format as old system (without radius) for compatibility
     const cacheKey = `star_${stellarClass}_${Math.floor(seed)}`;
 
     if (this.spriteCache.has(cacheKey)) {
       return this.spriteCache.get(cacheKey);
     }
 
-    console.log(`[CelestialSpriteGenerator] Generating NEW star sprite: class=${stellarClass}, radius=${radius}`);
+    console.log(`[CelestialSpriteGenerator] Loading ${stellarClass} star sprite from file...`);
 
     try {
-      this.generator.seed = seed;
+      const spriteData = await this.spriteLoader.loadStarSprite(stellarClass);
 
-      const starData = await this.generator.generateStar({
-        radius,
-        stellarClass,
-        seed,
-        animationFrames: 2  // ULTRA-OPTIMIZED: 50% faster (12x speedup from original)
-      });
-
-      if (!starData || !starData.frames) {
-        console.error('[CelestialSpriteGenerator] generateStar returned invalid data:', starData);
+      if (!spriteData) {
+        console.error(`[CelestialSpriteGenerator] Failed to load star sprite for class ${stellarClass}`);
         return null;
       }
-
-      console.log(`[CelestialSpriteGenerator] Star data generated, creating sprite sheet from ${starData.frames.length} frames...`);
-
-      const spriteSheet = await this.generator.createSpriteSheet(starData.frames);
-
-      if (!spriteSheet || !spriteSheet.canvas) {
-        console.error('[CelestialSpriteGenerator] Failed to create sprite sheet for star');
-        console.error('[CelestialSpriteGenerator] spriteSheet:', spriteSheet);
-        return null;
-      }
-
-      console.log(`[CelestialSpriteGenerator] Star sprite sheet created: ${spriteSheet.canvas.width}x${spriteSheet.canvas.height}, ${spriteSheet.frameCount} frames`);
 
       const result = {
-        name: cacheKey,  // Required for sprite lookup
-        image: spriteSheet.canvas,
-        width: spriteSheet.canvas.width,
-        height: spriteSheet.canvas.height,
-        frameWidth: spriteSheet.frameWidth,
-        frameHeight: spriteSheet.frameHeight,
-        cols: spriteSheet.cols,
-        rows: spriteSheet.rows,
-        frameCount: spriteSheet.frameCount,
+        name: cacheKey,
+        image: spriteData.image,
+        width: spriteData.image.width,
+        height: spriteData.image.height,
+        frameWidth: spriteData.frameWidth,
+        frameHeight: spriteData.frameHeight,
+        cols: spriteData.cols,
+        rows: spriteData.rows,
+        frameCount: spriteData.frameCount,
         frames: []
       };
 
       // Create frame metadata
-      for (let i = 0; i < spriteSheet.frameCount; i++) {
-        const col = i % spriteSheet.cols;
-        const row = Math.floor(i / spriteSheet.cols);
+      for (let i = 0; i < spriteData.frameCount; i++) {
+        const col = i % result.cols;
+        const row = Math.floor(i / result.cols);
         result.frames.push({
           index: i,
-          x: col * spriteSheet.frameWidth,
-          y: row * spriteSheet.frameHeight,
-          width: spriteSheet.frameWidth,
-          height: spriteSheet.frameHeight
+          x: col * result.frameWidth,
+          y: row * result.frameHeight,
+          width: result.frameWidth,
+          height: result.frameHeight
         });
       }
 
-      // Validate result before caching
-      if (!result.image || !result.name || result.frameCount === 0) {
-        console.error('[CelestialSpriteGenerator] Invalid result object created!');
-        console.error('[CelestialSpriteGenerator] Result:', {
-          name: result.name,
-          hasImage: !!result.image,
-          frameCount: result.frameCount,
-          width: result.width,
-          height: result.height
-        });
-        return null;
-      }
-
-      // Cache with name as key for sprite sheet lookup
       this.spriteCache.set(cacheKey, result);
-      console.log(`[CelestialSpriteGenerator] ✓ Cached in spriteCache with key: ${cacheKey}`);
-
-      console.log(`[CelestialSpriteGenerator] ✓ Star sprite generated: ${cacheKey}, ${result.frameCount} frames`);
+      console.log(`[CelestialSpriteGenerator] ✓ Star sprite loaded: ${cacheKey}`);
 
       return result;
     } catch (error) {
-      console.error('[CelestialSpriteGenerator] Error generating star sprite:', error);
-      console.error('[CelestialSpriteGenerator] Error stack:', error.stack);
+      console.error('[CelestialSpriteGenerator] Error loading star sprite:', error);
       return null;
     }
   }
 
   /**
-   * Generate planet sprite with realistic surface features
+   * Generate planet sprite by loading from file
    */
   async generatePlanetSprite(config) {
     const {
       type = 'terran',
       radius = 128,
-      pixelSize = 1,  // Small pixels for heavy pixelation
-      seed = Math.random() * 10000,
-      colors = null  // Ignored - using preset palettes
+      seed = Math.random() * 10000
     } = config;
 
-    // Use same cache key format as old system for compatibility
     const cacheKey = `planet_${type}_${Math.floor(seed)}`;
 
     if (this.spriteCache.has(cacheKey)) {
       return this.spriteCache.get(cacheKey);
     }
 
-    console.log(`[CelestialSpriteGenerator] Generating NEW planet sprite: type=${type}, radius=${radius}`);
+    console.log(`[CelestialSpriteGenerator] Loading ${type} planet sprite from file...`);
 
-    this.generator.seed = seed;
+    try {
+      // Use seed to select which of the 80 variants to load
+      const index = Math.floor(seed) % 80;
+      const spriteData = await this.spriteLoader.loadPlanetSprite(type, index);
 
-    const planetData = await this.generator.generatePlanet({
-      radius,
-      type,
-      seed,
-      animationFrames: 3  // ULTRA-OPTIMIZED: 50% faster (5x speedup from original)
-    });
+      if (!spriteData) {
+        console.error(`[CelestialSpriteGenerator] Failed to load planet sprite for type ${type} index ${index}`);
+        return null;
+      }
 
-    if (!planetData || !planetData.frames) {
-      console.error('[CelestialSpriteGenerator] generatePlanet returned invalid data:', planetData);
+      const result = {
+        name: cacheKey,
+        image: spriteData.image,
+        width: spriteData.image.width,
+        height: spriteData.image.height,
+        frameWidth: spriteData.frameWidth,
+        frameHeight: spriteData.frameHeight,
+        cols: spriteData.cols,
+        rows: spriteData.rows,
+        frameCount: spriteData.frameCount,
+        frames: []
+      };
+
+      // Create frame metadata
+      for (let i = 0; i < spriteData.frameCount; i++) {
+        const col = i % result.cols;
+        const row = Math.floor(i / result.cols);
+        result.frames.push({
+          index: i,
+          x: col * result.frameWidth,
+          y: row * result.frameHeight,
+          width: result.frameWidth,
+          height: result.frameHeight
+        });
+      }
+
+      this.spriteCache.set(cacheKey, result);
+      console.log(`[CelestialSpriteGenerator] ✓ Planet sprite loaded: ${cacheKey}`);
+
+      return result;
+    } catch (error) {
+      console.error('[CelestialSpriteGenerator] Error loading planet sprite:', error);
       return null;
     }
-
-    const spriteSheet = await this.generator.createSpriteSheet(planetData.frames);
-
-    if (!spriteSheet || !spriteSheet.canvas) {
-      console.error('[CelestialSpriteGenerator] Failed to create sprite sheet for planet');
-      return null;
-    }
-
-    const result = {
-      name: cacheKey,  // Required for sprite lookup
-      image: spriteSheet.canvas,
-      width: spriteSheet.canvas.width,
-      height: spriteSheet.canvas.height,
-      frameWidth: spriteSheet.frameWidth,
-      frameHeight: spriteSheet.frameHeight,
-      cols: spriteSheet.cols,
-      rows: spriteSheet.rows,
-      frameCount: spriteSheet.frameCount,
-      frames: []
-    };
-
-    // Create frame metadata
-    for (let i = 0; i < spriteSheet.frameCount; i++) {
-      const col = i % spriteSheet.cols;
-      const row = Math.floor(i / spriteSheet.cols);
-      result.frames.push({
-        index: i,
-        x: col * spriteSheet.frameWidth,
-        y: row * spriteSheet.frameHeight,
-        width: spriteSheet.frameWidth,
-        height: spriteSheet.frameHeight
-      });
-    }
-
-    // Cache with name as key for sprite sheet lookup
-    this.spriteCache.set(cacheKey, result);
-
-    console.log(`[CelestialSpriteGenerator] ✓ Planet sprite generated: ${cacheKey}, ${result.frameCount} frames`);
-
-    return result;
   }
 
   /**
-   * Generate moon sprite
+   * Generate moon sprite by loading from file
    */
   async generateMoonSprite(config) {
     const {
       type = 'rocky',
       radius = 64,
-      pixelSize = 1,
       seed = Math.random() * 10000
     } = config;
 
-    // Moons use the 'moon' type in the new generator
-    return this.generatePlanetSprite({
-      type: 'moon',
-      radius,
-      pixelSize,
-      seed
-    });
+    const cacheKey = `moon_${Math.floor(seed)}`;
+
+    if (this.spriteCache.has(cacheKey)) {
+      return this.spriteCache.get(cacheKey);
+    }
+
+    console.log(`[CelestialSpriteGenerator] Loading moon sprite from file...`);
+
+    try {
+      // Use seed to select which of the 80 variants to load
+      const index = Math.floor(seed) % 80;
+      const spriteData = await this.spriteLoader.loadMoonSprite(index);
+
+      if (!spriteData) {
+        console.error(`[CelestialSpriteGenerator] Failed to load moon sprite index ${index}`);
+        return null;
+      }
+
+      const result = {
+        name: cacheKey,
+        image: spriteData.image,
+        width: spriteData.image.width,
+        height: spriteData.image.height,
+        frameWidth: spriteData.frameWidth,
+        frameHeight: spriteData.frameHeight,
+        cols: spriteData.cols,
+        rows: spriteData.rows,
+        frameCount: spriteData.frameCount,
+        frames: []
+      };
+
+      // Create frame metadata
+      for (let i = 0; i < spriteData.frameCount; i++) {
+        const col = i % result.cols;
+        const row = Math.floor(i / result.cols);
+        result.frames.push({
+          index: i,
+          x: col * result.frameWidth,
+          y: row * result.frameHeight,
+          width: result.frameWidth,
+          height: result.frameHeight
+        });
+      }
+
+      this.spriteCache.set(cacheKey, result);
+      console.log(`[CelestialSpriteGenerator] ✓ Moon sprite loaded: ${cacheKey}`);
+
+      return result;
+    } catch (error) {
+      console.error('[CelestialSpriteGenerator] Error loading moon sprite:', error);
+      return null;
+    }
   }
 
   /**
-   * Generate asteroid sprite
+   * Generate asteroid sprite by loading from file
    */
   async generateAsteroidSprite(config) {
     const {
@@ -226,55 +282,52 @@ export class CelestialSpriteGenerator {
       return this.spriteCache.get(cacheKey);
     }
 
-    console.log(`[CelestialSpriteGenerator] Generating NEW asteroid sprite: size=${size}`);
+    console.log(`[CelestialSpriteGenerator] Loading asteroid sprite from file...`);
 
-    this.generator.seed = seed;
+    try {
+      // Use seed to select which of the 80 variants to load
+      const index = Math.floor(seed) % 80;
+      const spriteData = await this.spriteLoader.loadAsteroidSprite(index);
 
-    const asteroidData = await this.generator.generateAsteroid({
-      size,
-      seed,
-      animationFrames: 4  // ULTRA-OPTIMIZED: 67% faster asteroid generation
-    });
+      if (!spriteData) {
+        console.error(`[CelestialSpriteGenerator] Failed to load asteroid sprite index ${index}`);
+        return null;
+      }
 
-    const spriteSheet = await this.generator.createSpriteSheet(asteroidData.frames);
+      const result = {
+        name: cacheKey,
+        image: spriteData.image,
+        width: spriteData.image.width,
+        height: spriteData.image.height,
+        frameWidth: spriteData.frameWidth,
+        frameHeight: spriteData.frameHeight,
+        cols: spriteData.cols,
+        rows: spriteData.rows,
+        frameCount: spriteData.frameCount,
+        frames: []
+      };
 
-    if (!spriteSheet || !spriteSheet.canvas) {
-      console.error('[CelestialSpriteGenerator] Failed to create sprite sheet for asteroid');
+      // Create frame metadata
+      for (let i = 0; i < spriteData.frameCount; i++) {
+        const col = i % result.cols;
+        const row = Math.floor(i / result.cols);
+        result.frames.push({
+          index: i,
+          x: col * result.frameWidth,
+          y: row * result.frameHeight,
+          width: result.frameWidth,
+          height: result.frameHeight
+        });
+      }
+
+      this.spriteCache.set(cacheKey, result);
+      console.log(`[CelestialSpriteGenerator] ✓ Asteroid sprite loaded: ${cacheKey}`);
+
+      return result;
+    } catch (error) {
+      console.error('[CelestialSpriteGenerator] Error loading asteroid sprite:', error);
       return null;
     }
-
-    const result = {
-      name: cacheKey,  // Required for sprite lookup
-      image: spriteSheet.canvas,
-      width: spriteSheet.canvas.width,
-      height: spriteSheet.canvas.height,
-      frameWidth: spriteSheet.frameWidth,
-      frameHeight: spriteSheet.frameHeight,
-      cols: spriteSheet.cols,
-      rows: spriteSheet.rows,
-      frameCount: spriteSheet.frameCount,
-      frames: []
-    };
-
-    // Create frame metadata
-    for (let i = 0; i < spriteSheet.frameCount; i++) {
-      const col = i % spriteSheet.cols;
-      const row = Math.floor(i / spriteSheet.cols);
-      result.frames.push({
-        index: i,
-        x: col * spriteSheet.frameWidth,
-        y: row * spriteSheet.frameHeight,
-        width: spriteSheet.frameWidth,
-        height: spriteSheet.frameHeight
-      });
-    }
-
-    // Cache with name as key for sprite sheet lookup
-    this.spriteCache.set(cacheKey, result);
-
-    console.log(`[CelestialSpriteGenerator] ✓ Asteroid sprite generated: ${cacheKey}, ${result.frameCount} frames`);
-
-    return result;
   }
 
   /**
@@ -293,7 +346,7 @@ export class CelestialSpriteGenerator {
     if (systemData.star) {
       sprites.star = await this.generateStarSprite({
         stellarClass: systemData.star.stellarClass || 'G',
-        radius: 256,  // Fixed size for stars
+        radius: 256,
         seed: systemData.seed
       });
     }
@@ -310,20 +363,20 @@ export class CelestialSpriteGenerator {
         const typeMapping = {
           'terran_planet': 'terran',
           'rocky_planet': 'rocky',
-          'desert_planet': 'rocky',
+          'desert_planet': 'desert',
           'ice_planet': 'ice',
-          'gas_giant': 'gasGiant',
-          'ice_giant': 'gasGiant',
+          'gas_giant': 'terran',  // Fallback to terran for now
+          'ice_giant': 'ice',
           'volcanic_planet': 'lava',
           'lava_planet': 'lava',
-          'ocean_planet': 'terran'
+          'ocean_planet': 'ocean'
         };
 
         planetType = typeMapping[planetType] || planetType;
 
         const planetSprite = await this.generatePlanetSprite({
           type: planetType,
-          radius: 96,  // Medium size for planets
+          radius: 96,
           seed: systemData.seed + i * 1000
         });
 
@@ -339,7 +392,7 @@ export class CelestialSpriteGenerator {
             const moon = planet.moons[j];
             const moonSprite = await this.generateMoonSprite({
               type: moon.type || moon.moonType || 'rocky',
-              radius: 48,  // Small size for moons
+              radius: 48,
               seed: systemData.seed + i * 1000 + j * 100
             });
 

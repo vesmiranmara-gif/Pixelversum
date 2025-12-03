@@ -1,0 +1,18 @@
+{
+  "version": "4.0.0",
+  "generated": "2025-12-03T20:54:34.964Z",
+  "description": "Ultra high-detail sprites with variable sizes and organic terrain features",
+  "sprites": {
+    "stars": {
+      "O": {
+        "file": "stars/star_O.png",
+        "frames": 24,
+        "width": 25632,
+        "height": 1068
+      }
+    },
+    "planets": {},
+    "moons": {},
+    "asteroids": {}
+  }
+}

@@ -41,6 +41,9 @@ export class SpriteManager {
     this.generationQueue = [];
     this.generating = false;
 
+    // Sprite library state
+    this.libraryLoaded = false;
+
     // Performance tracking
     this.stats = {
       spritesGenerated: 0,
@@ -49,6 +52,41 @@ export class SpriteManager {
     };
 
     console.log('[SpriteManager] Initialized');
+  }
+
+  /**
+   * Load sprite library (call once during game initialization)
+   * This pre-generates hundreds of unique celestial body sprites
+   *
+   * @param {Object} options - Configuration options
+   * @param {Boolean} options.fullQuality - Generate 80/40 sprites per type (takes longer)
+   * @param {Boolean} options.lowQuality - Generate 5/3 sprites per type (faster)
+   * @param {Function} progressCallback - Optional callback(progress, stage)
+   */
+  async loadSpriteLibrary(options = {}, progressCallback = null) {
+    if (this.libraryLoaded) {
+      console.log('[SpriteManager] Sprite library already loaded');
+      return true;
+    }
+
+    console.log('[SpriteManager] ===== LOADING SPRITE LIBRARY =====');
+
+    // Configure library quality
+    if (options.fullQuality || options.lowQuality || Object.keys(options).length > 0) {
+      this.celestialGen.configureLibrary(options);
+    }
+
+    // Load the library
+    const success = await this.celestialGen.loadLibrary(progressCallback);
+
+    if (success) {
+      this.libraryLoaded = true;
+      console.log('[SpriteManager] ===== SPRITE LIBRARY LOADED =====');
+    } else {
+      console.error('[SpriteManager] Failed to load sprite library');
+    }
+
+    return success;
   }
 
   /**

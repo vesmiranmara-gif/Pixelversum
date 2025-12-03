@@ -306,9 +306,36 @@ export class PerformanceOptimizer {
   }
 
   /**
+   * Get sprite memory usage estimate
+   * OPTIMIZED FOR LARGER SPRITES: Track memory usage of loaded sprites
+   */
+  getSpriteMemoryUsage() {
+    if (!this.game.spriteManager || !this.game.spriteManager.celestialGen || !this.game.spriteManager.celestialGen.spriteLoader) {
+      return { loaded: 0, estimatedMB: 0 };
+    }
+
+    const loader = this.game.spriteManager.celestialGen.spriteLoader;
+    const loadedCount = loader.loadedSprites.size;
+
+    // Estimate memory usage based on sprite sizes:
+    // Stars: ~30MB each, Planets: ~12MB each, Moons: ~2MB, Asteroids: ~3MB
+    // Average estimate: ~10MB per sprite
+    const estimatedMB = Math.round(loadedCount * 10);
+
+    return {
+      loaded: loadedCount,
+      cached: loader.loadedSprites.size,
+      maxCache: loader.maxCacheSize,
+      estimatedMB: estimatedMB
+    };
+  }
+
+  /**
    * Get performance stats for display
    */
   getStats() {
+    const spriteMemory = this.getSpriteMemoryUsage();
+
     return {
       fps: Math.round(this.currentFPS),
       avgFPS: Math.round(this.averageFPS),
@@ -316,7 +343,9 @@ export class PerformanceOptimizer {
       particles: this.game.particles?.length || 0,
       projectiles: this.game.projectiles?.length || 0,
       pooledParticles: this.particlePool.length,
-      pooledProjectiles: this.projectilePool.length
+      pooledProjectiles: this.projectilePool.length,
+      spritesLoaded: spriteMemory.loaded,
+      spriteMemoryMB: spriteMemory.estimatedMB
     };
   }
 

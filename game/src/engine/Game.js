@@ -34,7 +34,6 @@ import { PerformanceOptimizer } from './PerformanceOptimizer.js';
 import { EnhancedEffects } from './EnhancedEffects.js';
 import { RetroScreenEffects } from './RetroScreenEffects.js';
 import { ENHANCED_ARTIFACTS, generateRandomArtifact } from './EnhancedItems.js';
-import { ENHANCED_PLANET_TYPES, generateEnhancedPlanet, generateComet } from './EnhancedCelestialBodies.js';
 // PERFORMANCE: Optimized rendering and particle systems
 import { OptimizedRenderer } from './OptimizedRenderer.js';
 import { ParticleManager } from './ParticleManager.js';
@@ -997,6 +996,36 @@ export class Game {
   }
 
   async loadStarSystem(systemIndex) {
+    // SPRITES: Load sprite library on first system load
+    // This pre-generates hundreds of unique celestial body sprites for variety
+    if (this.spriteManager && !this.spriteManager.libraryLoaded) {
+      console.log('[Game] Loading sprite library (first time only)...');
+      this.systemLoading = true; // Show loading screen
+
+      try {
+        // Configure sprite library quality
+        // Options: { fullQuality: true } for 80/40 sprites (slow)
+        //          { lowQuality: true } for 5/3 sprites (fast)
+        //          Default: 20/15 sprites (balanced)
+        const libraryOptions = {}; // Use default (20/15 sprites)
+
+        const success = await this.spriteManager.loadSpriteLibrary(
+          libraryOptions,
+          (progress, stage) => {
+            console.log(`[Game] Sprite library loading: ${progress.toFixed(1)}% - ${stage}`);
+          }
+        );
+
+        if (success) {
+          console.log('[Game] ✓ Sprite library loaded successfully');
+        } else {
+          console.warn('[Game] Sprite library failed to load, will use procedural generation');
+        }
+      } catch (error) {
+        console.error('[Game] Error loading sprite library:', error);
+      }
+    }
+
     let systemData = this.galaxy[systemIndex];
 
     // PERFORMANCE FIX: Generate full system data on-demand if it's a placeholder
