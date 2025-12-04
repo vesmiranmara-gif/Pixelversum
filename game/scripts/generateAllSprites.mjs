@@ -1,11 +1,23 @@
 #!/usr/bin/env node
 /**
- * PIXELVERSUM - ULTRA HIGH DETAIL CELESTIAL SPRITE GENERATOR
- * Generates massively detailed, heavily pixelated celestial body sprites
- * With complex geological features: rivers, lakes, seas, mountains, canyons, volcanoes, etc.
+ * PIXELVERSUM - OPTIMIZED CELESTIAL SPRITE GENERATOR v6.0
+ *
+ * Generates realistic celestial body sprites with:
+ * - Original large sizes (800-1500px)
+ * - Optimized noise for FAST generation
+ * - 8-12 frames for smooth but slow animation
+ * - Segmented generation by celestial body type
+ *
+ * Usage:
+ *   node generateAllSprites.mjs --all              # Generate everything
+ *   node generateAllSprites.mjs --stars            # Generate only stars
+ *   node generateAllSprites.mjs --planets          # Generate only planets
+ *   node generateAllSprites.mjs --moons            # Generate only moons
+ *   node generateAllSprites.mjs --asteroids        # Generate only asteroids
+ *   node generateAllSprites.mjs --stars --planets  # Generate stars and planets
  */
 
-import { createCanvas } from 'canvas';
+import { createCanvas } from '@napi-rs/canvas';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -14,78 +26,133 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const OUTPUT_DIR = path.join(__dirname, '../public/sprites');
 
-// Configuration - INCREASED RESOLUTION WITH REALISTIC SIZE DIVERSITY
+// ============================================================================
+// CONFIGURATION - Original large sizes, optimized frames
+// ============================================================================
 const CONFIG = {
-  spritesPerPlanetType: 80,
-  spritesPerMoon: 80,
-  spritesPerAsteroid: 80,
-  stellarClasses: ['O', 'B', 'A', 'F', 'G', 'K', 'M', 'BrownDwarf', 'WhiteDwarf', 'NeutronStar', 'Pulsar', 'RedGiant', 'BlueGiant', 'RedSuperGiant', 'BlueSuperGiant'],
-  planetTypes: ['terran', 'rocky', 'desert', 'ice', 'frozen', 'lava', 'volcanic', 'ocean', 'carbon', 'crystal', 'metal', 'eyeball', 'tidally_locked', 'radioactive', 'super_earth', 'jungle', 'chthonian', 'iron_core', 'hycean', 'coreless'],
+  // Sprite counts per type
+  spritesPerPlanetType: 3,  // 3 variants per planet type
+  spritesPerMoon: 5,
+  spritesPerAsteroid: 8,
 
-  // REALISTIC SIZE DIVERSITY - Based on actual stellar/planetary physics
-  // Canvas limit: max ~32,767px per dimension, so with 24 frames: max ~1360px per frame
+  // All stellar classifications
+  stellarClasses: [
+    'O', 'B', 'A', 'F', 'G', 'K', 'M',
+    'BrownDwarf', 'WhiteDwarf', 'NeutronStar', 'Pulsar',
+    'RedGiant', 'BlueGiant', 'RedSuperGiant', 'BlueSuperGiant',
+    'WolfRayet', 'CarbonStar', 'SRed', 'Protostar'
+  ],
+
+  // Extended planet types - 36 types
+  planetTypes: [
+    'terran', 'rocky', 'desert', 'ice', 'frozen', 'tundra', 'savanna', 'alpine',
+    'lava', 'volcanic', 'magma_ocean', 'sulfur',
+    'ocean', 'archipelago', 'swamp', 'tropical',
+    'carbon', 'crystal', 'metal', 'iron_core', 'diamond',
+    'eyeball', 'tidally_locked', 'radioactive', 'toxic',
+    'super_earth', 'mega_earth', 'jungle', 'pangea',
+    'gas_giant', 'hot_jupiter', 'ice_giant', 'neptunian',
+    'chthonian', 'hycean', 'coreless', 'protoplanet'
+  ],
+
+  // ORIGINAL LARGE star sizes
   starSizes: {
-    'O': { min: 900, max: 1100 },               // Massive blue supergiants
-    'B': { min: 800, max: 1000 },               // Large blue-white stars
-    'A': { min: 700, max: 900 },                // White stars
-    'F': { min: 650, max: 850 },                // Yellow-white stars
-    'G': { min: 600, max: 800 },                // Sun-like stars (baseline)
-    'K': { min: 500, max: 700 },                // Orange dwarfs
-    'M': { min: 300, max: 500 },                // Red dwarfs (small)
-    'BrownDwarf': { min: 200, max: 350 },       // Failed stars (tiny)
-    'WhiteDwarf': { min: 150, max: 300 },       // Collapsed remnants (very small)
-    'NeutronStar': { min: 100, max: 200 },      // Ultra-dense remnants (smallest)
-    'Pulsar': { min: 100, max: 200 },           // Spinning neutron stars
-    'RedGiant': { min: 1100, max: 1300 },       // Swollen red giants (huge)
-    'BlueGiant': { min: 1000, max: 1200 },      // Massive blue giants
-    'RedSuperGiant': { min: 1200, max: 1360 },  // Enormous red supergiants (largest, at canvas limit)
-    'BlueSuperGiant': { min: 1100, max: 1300 }  // Massive blue supergiants
+    'O': { min: 1200, max: 1500 },
+    'B': { min: 1100, max: 1400 },
+    'A': { min: 1000, max: 1300 },
+    'F': { min: 900, max: 1200 },
+    'G': { min: 800, max: 1100 },
+    'K': { min: 700, max: 1000 },
+    'M': { min: 500, max: 800 },
+    'BrownDwarf': { min: 400, max: 600 },
+    'WhiteDwarf': { min: 300, max: 500 },
+    'NeutronStar': { min: 250, max: 400 },
+    'Pulsar': { min: 250, max: 400 },
+    'RedGiant': { min: 1300, max: 1500 },
+    'BlueGiant': { min: 1200, max: 1450 },
+    'RedSuperGiant': { min: 1400, max: 1500 },
+    'BlueSuperGiant': { min: 1350, max: 1500 },
+    'WolfRayet': { min: 900, max: 1200 },
+    'CarbonStar': { min: 1000, max: 1300 },
+    'SRed': { min: 600, max: 900 },
+    'Protostar': { min: 800, max: 1100 }
   },
 
+  // ORIGINAL LARGE planet sizes
   planetSizes: {
-    'terran': { min: 400, max: 600 },           // Earth-like (medium)
-    'rocky': { min: 300, max: 500 },            // Rocky worlds (small-medium)
-    'desert': { min: 350, max: 550 },           // Desert worlds
-    'ice': { min: 300, max: 500 },              // Ice worlds (small-medium)
-    'frozen': { min: 250, max: 450 },           // Frozen worlds
-    'lava': { min: 300, max: 500 },             // Lava worlds
-    'volcanic': { min: 350, max: 550 },         // Volcanic worlds
-    'ocean': { min: 400, max: 650 },            // Ocean worlds (can be large)
-    'carbon': { min: 300, max: 500 },           // Carbon planets
-    'crystal': { min: 250, max: 450 },          // Crystal planets
-    'metal': { min: 200, max: 400 },            // Metal-rich (small, dense)
-    'eyeball': { min: 350, max: 550 },          // Tidally locked
-    'tidally_locked': { min: 300, max: 500 },   // Tidally locked
-    'radioactive': { min: 250, max: 450 },      // Radioactive worlds
-    'super_earth': { min: 600, max: 900 },      // Super-Earths (large)
-    'jungle': { min: 450, max: 700 },           // Jungle worlds (large, habitable)
-    'chthonian': { min: 400, max: 650 },        // Gas giant cores (large)
-    'iron_core': { min: 200, max: 400 },        // Exposed cores (small, dense)
-    'hycean': { min: 500, max: 800 },           // Water-rich super-Earths (very large)
-    'coreless': { min: 350, max: 600 }          // Unusual planets
+    'terran': { min: 600, max: 900 },
+    'rocky': { min: 400, max: 700 },
+    'desert': { min: 500, max: 800 },
+    'ice': { min: 450, max: 750 },
+    'frozen': { min: 400, max: 700 },
+    'tundra': { min: 500, max: 800 },
+    'savanna': { min: 600, max: 900 },
+    'alpine': { min: 500, max: 800 },
+    'lava': { min: 450, max: 750 },
+    'volcanic': { min: 500, max: 800 },
+    'magma_ocean': { min: 600, max: 950 },
+    'sulfur': { min: 400, max: 650 },
+    'ocean': { min: 700, max: 1000 },
+    'archipelago': { min: 600, max: 950 },
+    'swamp': { min: 500, max: 800 },
+    'tropical': { min: 600, max: 950 },
+    'carbon': { min: 450, max: 750 },
+    'crystal': { min: 400, max: 700 },
+    'metal': { min: 350, max: 650 },
+    'iron_core': { min: 350, max: 600 },
+    'diamond': { min: 400, max: 700 },
+    'eyeball': { min: 500, max: 800 },
+    'tidally_locked': { min: 450, max: 750 },
+    'radioactive': { min: 400, max: 700 },
+    'toxic': { min: 450, max: 750 },
+    'super_earth': { min: 800, max: 1100 },
+    'mega_earth': { min: 1000, max: 1300 },
+    'jungle': { min: 700, max: 1000 },
+    'pangea': { min: 750, max: 1050 },
+    'gas_giant': { min: 1000, max: 1400 },
+    'hot_jupiter': { min: 950, max: 1350 },
+    'ice_giant': { min: 800, max: 1100 },
+    'neptunian': { min: 750, max: 1050 },
+    'chthonian': { min: 600, max: 950 },
+    'hycean': { min: 750, max: 1100 },
+    'coreless': { min: 500, max: 850 },
+    'protoplanet': { min: 350, max: 700 }
   },
 
-  moonSizes: { min: 150, max: 300 },            // Varied moon sizes
-  asteroidSizes: { min: 100, max: 400 }         // Highly varied asteroid sizes
+  moonSizes: { min: 200, max: 450 },
+  asteroidSizes: { min: 150, max: 500 },
+
+  // Fewer frames for slower animation
+  starFrames: 8,
+  planetFrames: 10,
+  moonFrames: 8,
+  asteroidFrames: 6
 };
 
-// Advanced Perlin noise implementation
-class AdvancedNoiseGenerator {
+// ============================================================================
+// FAST NOISE GENERATOR - Optimized with fewer octaves
+// ============================================================================
+class FastNoise {
   constructor(seed = 12345) {
     this.seed = seed;
-    this.permutation = this.generatePermutation(seed);
+    this.perm = new Uint8Array(512);
+    this.initPermutation(seed);
   }
 
-  generatePermutation(seed) {
-    const p = [];
+  initPermutation(seed) {
+    const p = new Uint8Array(256);
     for (let i = 0; i < 256; i++) p[i] = i;
-    let rng = seed;
+
+    let rng = seed >>> 0;
     for (let i = 255; i > 0; i--) {
-      rng = (rng * 1664525 + 1013904223) & 0xFFFFFFFF;
-      const j = Math.floor((rng / 0xFFFFFFFF) * (i + 1));
+      rng = (rng * 1664525 + 1013904223) >>> 0;
+      const j = rng % (i + 1);
       [p[i], p[j]] = [p[j], p[i]];
     }
-    return [...p, ...p];
+
+    for (let i = 0; i < 256; i++) {
+      this.perm[i] = this.perm[i + 256] = p[i];
+    }
   }
 
   fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
@@ -94,595 +161,531 @@ class AdvancedNoiseGenerator {
   grad(hash, x, y, z) {
     const h = hash & 15;
     const u = h < 8 ? x : y;
-    const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
-    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    const v = h < 4 ? y : (h === 12 || h === 14 ? x : z);
+    return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
   }
 
-  noise(x, y, z = 0) {
-    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
-    x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
-    const u = this.fade(x), v = this.fade(y), w = this.fade(z);
-    const A = this.permutation[X] + Y, AA = this.permutation[A] + Z, AB = this.permutation[A + 1] + Z;
-    const B = this.permutation[X + 1] + Y, BA = this.permutation[B] + Z, BB = this.permutation[B + 1] + Z;
+  noise3D(x, y, z) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const Z = Math.floor(z) & 255;
+
+    x -= Math.floor(x);
+    y -= Math.floor(y);
+    z -= Math.floor(z);
+
+    const u = this.fade(x);
+    const v = this.fade(y);
+    const w = this.fade(z);
+
+    const A = this.perm[X] + Y;
+    const AA = this.perm[A] + Z;
+    const AB = this.perm[A + 1] + Z;
+    const B = this.perm[X + 1] + Y;
+    const BA = this.perm[B] + Z;
+    const BB = this.perm[B + 1] + Z;
+
     return this.lerp(
       this.lerp(
-        this.lerp(this.grad(this.permutation[AA], x, y, z), this.grad(this.permutation[BA], x - 1, y, z), u),
-        this.lerp(this.grad(this.permutation[AB], x, y - 1, z), this.grad(this.permutation[BB], x - 1, y - 1, z), u), v),
+        this.lerp(this.grad(this.perm[AA], x, y, z), this.grad(this.perm[BA], x - 1, y, z), u),
+        this.lerp(this.grad(this.perm[AB], x, y - 1, z), this.grad(this.perm[BB], x - 1, y - 1, z), u),
+        v
+      ),
       this.lerp(
-        this.lerp(this.grad(this.permutation[AA + 1], x, y, z - 1), this.grad(this.permutation[BA + 1], x - 1, y, z - 1), u),
-        this.lerp(this.grad(this.permutation[AB + 1], x, y - 1, z - 1), this.grad(this.permutation[BB + 1], x - 1, y - 1, z - 1), u), v), w);
+        this.lerp(this.grad(this.perm[AA + 1], x, y, z - 1), this.grad(this.perm[BA + 1], x - 1, y, z - 1), u),
+        this.lerp(this.grad(this.perm[AB + 1], x, y - 1, z - 1), this.grad(this.perm[BB + 1], x - 1, y - 1, z - 1), u),
+        v
+      ),
+      w
+    );
   }
 
-  fbm(x, y, z = 0, octaves = 8) {
-    let value = 0, amplitude = 1, frequency = 1, maxValue = 0;
+  // Optimized FBM with fewer octaves (4 instead of 12)
+  fbm(x, y, z = 0, octaves = 4) {
+    let value = 0, amp = 1, freq = 1, max = 0;
     for (let i = 0; i < octaves; i++) {
-      value += this.noise(x * frequency, y * frequency, z * frequency) * amplitude;
-      maxValue += amplitude; amplitude *= 0.5; frequency *= 2.0;
+      value += this.noise3D(x * freq, y * freq, z * freq) * amp;
+      max += amp;
+      amp *= 0.5;
+      freq *= 2;
     }
-    return (value / maxValue) * 0.5 + 0.5;
+    return (value / max) * 0.5 + 0.5;
   }
 
-  turbulence(x, y, z = 0, octaves = 6) {
-    let value = 0, amplitude = 1, frequency = 1, maxValue = 0;
+  // Fast turbulence (4 octaves)
+  turbulence(x, y, z = 0, octaves = 4) {
+    let value = 0, amp = 1, freq = 1, max = 0;
     for (let i = 0; i < octaves; i++) {
-      value += Math.abs(this.noise(x * frequency, y * frequency, z * frequency)) * amplitude;
-      maxValue += amplitude; amplitude *= 0.5; frequency *= 2.0;
+      value += Math.abs(this.noise3D(x * freq, y * freq, z * freq)) * amp;
+      max += amp;
+      amp *= 0.5;
+      freq *= 2;
     }
-    return value / maxValue;
+    return value / max;
   }
 
-  ridged(x, y, z = 0, octaves = 6) {
-    let value = 0, amplitude = 1, frequency = 1, maxValue = 0;
+  // Ridged noise for mountains (4 octaves)
+  ridged(x, y, z = 0, octaves = 4) {
+    let value = 0, amp = 1, freq = 1, weight = 1;
     for (let i = 0; i < octaves; i++) {
-      const n = 1.0 - Math.abs(this.noise(x * frequency, y * frequency, z * frequency));
-      value += n * n * amplitude;
-      maxValue += amplitude; amplitude *= 0.5; frequency *= 2.0;
+      let signal = this.noise3D(x * freq, y * freq, z * freq);
+      signal = 1 - Math.abs(signal);
+      signal *= signal * weight;
+      weight = Math.min(1, Math.max(0, signal * 2));
+      value += signal * amp;
+      amp *= 0.5;
+      freq *= 2;
     }
-    return value / maxValue;
+    return Math.min(1, Math.max(0, value * 0.5));
   }
 
-  domainWarp(x, y, z = 0, strength = 1.0) {
-    return {
-      x: x + this.fbm(x + 5.2, y + 1.3, z, 4) * strength,
-      y: y + this.fbm(x + 7.8, y + 3.7, z, 4) * strength
-    };
+  // Simple domain warp (1 iteration for speed)
+  warp(x, y, z = 0, strength = 1) {
+    const wx = x + this.fbm(x + 5.2, y + 1.3, z, 3) * strength;
+    const wy = y + this.fbm(x + 7.8, y + 3.7, z, 3) * strength;
+    return { x: wx, y: wy };
   }
 }
 
-// Color utilities
+// ============================================================================
+// COLOR UTILITIES
+// ============================================================================
 function hexToRgb(hex) {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 0, g: 0, b: 0 };
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : { r: 128, g: 128, b: 128 };
 }
 
-function rgbToHex(r, g, b) {
-  return '#' + [r, g, b].map(x => {
-    const hex = Math.max(0, Math.min(255, Math.round(x))).toString(16);
-    return hex.length === 1 ? '0' + hex : hex;
-  }).join('');
+function lerpColor(c1, c2, t) {
+  const a = hexToRgb(c1), b = hexToRgb(c2);
+  const r = Math.round(a.r + (b.r - a.r) * t);
+  const g = Math.round(a.g + (b.g - a.g) * t);
+  const bl = Math.round(a.b + (b.b - a.b) * t);
+  return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${bl.toString(16).padStart(2,'0')}`;
 }
 
-function lerpColor(color1, color2, t) {
-  const c1 = hexToRgb(color1), c2 = hexToRgb(color2);
-  return rgbToHex(c1.r + (c2.r - c1.r) * t, c1.g + (c2.g - c1.g) * t, c1.b + (c2.b - c1.b) * t);
-}
-
-// Enhanced star palettes
-const STAR_PALETTES = {
-  'O': { core: ['#7799ff', '#8899ff', '#99aaff', '#aabfff', '#b9d4ff'], corona: ['#6688ee', '#7799ff', '#88aaff'], glow: ['#99bbff', '#aaccff', '#bbddff'] },
-  'B': { core: ['#99aaff', '#aabfff', '#b9d4ff', '#c8e2ff', '#d7efff'], corona: ['#8899ff', '#99aaff', '#aabbff'], glow: ['#bbccff', '#ccddff', '#ddeeff'] },
-  'A': { core: ['#c8e2ff', '#d7efff', '#e6f8ff', '#f5fdff', '#ffffff'], corona: ['#b9d4ff', '#c8e2ff', '#d7efff'], glow: ['#e6f8ff', '#f0fcff', '#ffffff'] },
-  'F': { core: ['#fff8f0', '#fffaeb', '#fffce6', '#fffee0', '#ffffdb'], corona: ['#ffe8cc', '#fff0dd', '#fff8ee'], glow: ['#fffaeb', '#fffcf0', '#fffef5'] },
-  'G': { core: ['#fff9e6', '#ffee99', '#ffdd55', '#ffcc33', '#ffbb11'], corona: ['#ffea99', '#fff0aa', '#fff6bb'], glow: ['#ffee99', '#fff4aa', '#fffabb'] },
-  'K': { core: ['#ffcc88', '#ffaa66', '#ff9944', '#ff8833', '#ff7722'], corona: ['#ffb380', '#ffc299', '#ffd1b3'], glow: ['#ffcc99', '#ffddb3', '#ffeecc'] },
-  'M': { core: ['#ff9955', '#ff7733', '#ff5511', '#ff3300', '#ee2200'], corona: ['#ff7b42', '#ff8a55', '#ff9968'], glow: ['#ff9955', '#ffaa66', '#ffbb77'] },
-  'BrownDwarf': { core: ['#8B4513', '#A0522D', '#B8704C', '#CD853F', '#D2935C'], corona: ['#6B3410', '#7A4315', '#89521A'], glow: ['#A0522D', '#B8704C', '#CD853F'] },
-  'WhiteDwarf': { core: ['#FFFFFF', '#F8F8FF', '#F0F0FF', '#E8E8FF', '#E0E0FF'], corona: ['#F0F0F0', '#F5F5F5', '#FAFAFA'], glow: ['#FFFFFF', '#FFFFFF', '#FFFFFF'] },
-  'NeutronStar': { core: ['#4169E1', '#1E90FF', '#00BFFF', '#87CEEB', '#B0E0E6'], corona: ['#A0D8F0', '#B0E0F5', '#C0E8FA'], glow: ['#87CEEB', '#ADD8E6', '#B0E0E6'] },
-  'Pulsar': { core: ['#00FFFF', '#00F5F5', '#00EBEB', '#00E0E0', '#00D5D5'], corona: ['#B0FFFF', '#C0FFFF', '#D0FFFF'], glow: ['#66FFFF', '#88FFFF', '#AAFFFF'] },
-  'RedGiant': { core: ['#FF6347', '#FF5533', '#FF4422', '#FF3311', '#FF2200'], corona: ['#FFB088', '#FFC09A', '#FFD0AC'], glow: ['#FF7755', '#FF8866', '#FF9977'] },
-  'BlueGiant': { core: ['#4169E1', '#3355DD', '#2244CC', '#1133BB', '#0022AA'], corona: ['#A0D8F0', '#B0E0F5', '#C0E8FA'], glow: ['#6699FF', '#77AAFF', '#88BBFF'] },
-  'RedSuperGiant': { core: ['#FF3300', '#FF2200', '#EE1100', '#DD0000', '#CC0000'], corona: ['#FF7355', '#FF8363', '#FF9371'], glow: ['#FF5533', '#FF6644', '#FF7755'] },
-  'BlueSuperGiant': { core: ['#0033FF', '#0022EE', '#0011DD', '#0000CC', '#0000BB'], corona: ['#5A7FE6', '#6A8FEB', '#7A9FF0'], glow: ['#3366FF', '#4477FF', '#5588FF'] }
-};
-
-// Helper function to get random size from range
-function getRandomSize(min, max) {
+function getRandom(min, max) {
   return Math.floor(min + Math.random() * (max - min + 1));
 }
 
-// Generate GLOWING ultra-detailed star sprite with REALISTIC SIZE DIVERSITY
-function generateStar(stellarClass) {
-  // Get realistic size for this stellar class
-  const sizeRange = CONFIG.starSizes[stellarClass] || CONFIG.starSizes['G'];
-  const size = getRandomSize(sizeRange.min, sizeRange.max);
+// ============================================================================
+// STAR PALETTES
+// ============================================================================
+const STAR_PALETTES = {
+  'O': { core: ['#9bb0ff', '#aabbff', '#ccdeff', '#eef5ff', '#ffffff'], glow: '#6688ee' },
+  'B': { core: ['#aabbff', '#bbccff', '#ddeeff', '#f0f8ff', '#ffffff'], glow: '#88aaff' },
+  'A': { core: ['#cad7ff', '#e4edff', '#f1f8ff', '#fafcff', '#ffffff'], glow: '#bbc8ff' },
+  'F': { core: ['#f8f7ff', '#fefeff', '#fffff8', '#fffffc', '#ffffff'], glow: '#f0efff' },
+  'G': { core: ['#fff4ea', '#ffeccc', '#ffd466', '#ffee88', '#ffffcc'], glow: '#ffeecc' },
+  'K': { core: ['#ffd2a1', '#ffba78', '#ff8828', '#ffaa44', '#ffcc66'], glow: '#ffccaa' },
+  'M': { core: ['#ffb56c', '#ff9944', '#ff5500', '#ff7722', '#ff9944'], glow: '#ff9966' },
+  'BrownDwarf': { core: ['#8b4513', '#a0522d', '#cd853f', '#daa06d', '#e8c090'], glow: '#a0522d' },
+  'WhiteDwarf': { core: ['#e8e8ff', '#f0f0ff', '#f8f8ff', '#fcfcff', '#ffffff'], glow: '#e0e0ff' },
+  'NeutronStar': { core: ['#00cccc', '#00dddd', '#00ffff', '#80ffff', '#ffffff'], glow: '#00cccc' },
+  'Pulsar': { core: ['#cc00cc', '#dd00dd', '#ff00ff', '#ff80ff', '#ffffff'], glow: '#cc00cc' },
+  'RedGiant': { core: ['#ff4020', '#ff5030', '#ff6347', '#ff8060', '#ffaa88'], glow: '#ff7050' },
+  'BlueGiant': { core: ['#4169e1', '#5070e8', '#7090f8', '#90b0ff', '#c0d0ff'], glow: '#6080e0' },
+  'RedSuperGiant': { core: ['#cc0000', '#dd0000', '#ff2000', '#ff5030', '#ff8060'], glow: '#ff4020' },
+  'BlueSuperGiant': { core: ['#0044ff', '#0066ff', '#0088ff', '#44aaff', '#88ccff'], glow: '#2060ff' },
+  'WolfRayet': { core: ['#00aadd', '#00ccff', '#00eeff', '#44ffff', '#88ffff'], glow: '#0099cc' },
+  'CarbonStar': { core: ['#cc0000', '#dd1100', '#ff3300', '#ff5511', '#ff8844'], glow: '#ff5511' },
+  'SRed': { core: ['#ff2222', '#ff4444', '#ff6666', '#ff8888', '#ffaaaa'], glow: '#ff7777' },
+  'Protostar': { core: ['#ff6600', '#ff8822', '#ffaa44', '#ffcc77', '#ffee99'], glow: '#ffbb66' }
+};
 
-  console.log(`  Generating ${stellarClass} star (${size}x${size}px)...`);
-  const frames = 24;
-  const canvas = createCanvas(size * frames, size);
-  const ctx = canvas.getContext('2d');
-  const noise = new AdvancedNoiseGenerator(Math.random() * 100000);
-  const palette = STAR_PALETTES[stellarClass] || STAR_PALETTES['G'];
-
-  for (let frame = 0; frame < frames; frame++) {
-    const offsetX = frame * size;
-    const centerX = size / 2, centerY = size / 2;
-    const radius = size * 0.35;
-    const time = frame / frames;
-    const imageData = ctx.createImageData(size, size);
-    const data = imageData.data;
-
-    // Render star with glow
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const dx = x - centerX, dy = y - centerY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
-        const idx = (y * size + x) * 4;
-
-        // GLOW LAYER - extends far beyond star surface
-        if (dist < radius * 3.5) {
-          const glowDist = dist / radius;
-          const glowFalloff = Math.max(0, 1 - glowDist / 3.5);
-          const glowPower = Math.pow(glowFalloff, 2.5);
-
-          if (glowPower > 0.01) {
-            const glowColor = hexToRgb(palette.glow[1]);
-            data[idx] += glowColor.r * glowPower * 0.4;
-            data[idx + 1] += glowColor.g * glowPower * 0.4;
-            data[idx + 2] += glowColor.b * glowPower * 0.4;
-          }
-        }
-
-        // STAR SURFACE
-        if (dist < radius * 1.6) {
-          const normalizedDist = dist / radius;
-
-          if (normalizedDist <= 1) {
-            // Main star body
-            const z = Math.sqrt(Math.max(0, 1 - normalizedDist * normalizedDist));
-            const texX = (angle + time * Math.PI * 2) * 8;
-            const texY = Math.acos(Math.min(1, z)) * 8;
-
-            // Complex surface features
-            const granulation = noise.fbm(texX * 4, texY * 4, time * 3, 10) * 0.25;
-            const convection = noise.turbulence(texX * 2, texY * 2, time * 4, 8) * 0.35;
-            const magneticFields = noise.ridged(texX * 3, texY * 3, time * 2, 7) * 0.25;
-            const sunspots = noise.fbm(texX * 5, texY * 5, time * 0.5, 6);
-
-            // Sunspots (darker regions)
-            let darkening = 1.0;
-            if (sunspots < 0.3) darkening = 0.6 + (sunspots / 0.3) * 0.4;
-
-            // CMEs and flares
-            const cmeNoise = noise.fbm(angle * 5 + time * 15, dist / 25, time * 8, 6);
-            const cmeIntensity = cmeNoise > 0.78 ? (cmeNoise - 0.78) * 5 : 0;
-
-            let brightness = (granulation + convection + magneticFields) * darkening;
-            brightness = Math.max(0, Math.min(1, brightness));
-
-            // Limb darkening
-            brightness *= (0.3 + 0.7 * z);
-            brightness += cmeIntensity * 0.4;
-
-            // Color based on brightness
-            let color;
-            if (brightness > 0.75) {
-              const t = (brightness - 0.75) / 0.25;
-              color = hexToRgb(lerpColor(palette.core[3], palette.core[4], t));
-            } else if (brightness > 0.5) {
-              const t = (brightness - 0.5) / 0.25;
-              color = hexToRgb(lerpColor(palette.core[2], palette.core[3], t));
-            } else if (brightness > 0.3) {
-              const t = (brightness - 0.3) / 0.2;
-              color = hexToRgb(lerpColor(palette.core[1], palette.core[2], t));
-            } else {
-              const t = brightness / 0.3;
-              color = hexToRgb(lerpColor(palette.core[0], palette.core[1], t));
-            }
-
-            data[idx] = Math.min(255, data[idx] + color.r * brightness * 1.2);
-            data[idx + 1] = Math.min(255, data[idx + 1] + color.g * brightness * 1.2);
-            data[idx + 2] = Math.min(255, data[idx + 2] + color.b * brightness * 1.2);
-            data[idx + 3] = 255;
-          } else {
-            // Corona layer (1.0 to 1.6)
-            const coronaDist = (normalizedDist - 1.0) / 0.6;
-            const coronaNoise = noise.fbm(angle * 6 + time * 12, dist / 20, time * 10, 7);
-            const coronaBrightness = Math.max(0, (1 - coronaDist) * coronaNoise * 1.2);
-
-            if (coronaBrightness > 0.08) {
-              const coronaColor = hexToRgb(palette.corona[Math.floor(coronaNoise * (palette.corona.length - 1))]);
-              data[idx] = Math.min(255, data[idx] + coronaColor.r * coronaBrightness);
-              data[idx + 1] = Math.min(255, data[idx + 1] + coronaColor.g * coronaBrightness);
-              data[idx + 2] = Math.min(255, data[idx + 2] + coronaColor.b * coronaBrightness);
-              data[idx + 3] = Math.max(data[idx + 3], Math.floor(coronaBrightness * 255));
-            }
-          }
-        }
-
-        // Set alpha for transparency
-        if (data[idx + 3] === 0) {
-          const totalBrightness = data[idx] + data[idx + 1] + data[idx + 2];
-          if (totalBrightness > 5) {
-            data[idx + 3] = Math.min(255, totalBrightness / 3);
-          }
-        }
-      }
-    }
-
-    ctx.putImageData(imageData, offsetX, 0);
-  }
-
-  return canvas;
-}
-
-// Extensive planet color palettes
+// ============================================================================
+// PLANET PALETTES
+// ============================================================================
 const PLANET_PALETTES = {
   terran: {
-    deepOcean: ['#001a33', '#002040', '#002b4d', '#003560', '#004070', '#004f80'],
-    ocean: ['#004f80', '#005a90', '#0066aa', '#0070bb', '#007acc', '#0088dd'],
-    shallowWater: ['#0099cc', '#00aadd', '#00bbee', '#00ccff', '#22ddff', '#44eeff'],
-    beach: ['#c9b18a', '#d2b48c', '#dcc09e', '#e6c896', '#f0d2a0', '#fadcaa'],
-    plains: ['#3a6a2f', '#4a7c3f', '#5a8c4f', '#6a9c5f', '#7aac6f', '#8abc7f'],
-    forest: ['#0a4a0a', '#1a5c1a', '#2a6e2a', '#3a803a', '#4a924a', '#5aa45a'],
-    desert: ['#c8a47e', '#d2b48c', '#dcc09e', '#e6c896', '#f0d2a0', '#fadcaa'],
-    mountain: ['#5a4d44', '#6b5d54', '#7c6d64', '#8d7d74', '#9e8d84', '#af9d94'],
-    snowCap: ['#d0e8ff', '#e0f0ff', '#f0f8ff', '#f8fcff', '#ffffff', '#ffffff'],
-    clouds: ['#f0f8ff', '#f5faff', '#fafcff', '#ffffff', '#ffffff'],
-    riverBed: ['#003d66', '#004770', '#00517a', '#005b84', '#00658e', '#006f98'],
-    lakeBed: ['#002b4d', '#003557', '#003f61', '#00496b', '#005375', '#005d7f'],
-    city: ['#ffaa00', '#ffbb22', '#ffcc44', '#ffdd66', '#ffee88']
+    ocean: ['#003366', '#004080', '#0066cc', '#0088dd'],
+    land: ['#4a7c59', '#5d8a4a', '#7daa6a', '#8abc99'],
+    mountain: ['#6b5b4b', '#8b7b6b', '#ab9b8b'],
+    snow: ['#e8f4f8', '#f8fcfe', '#ffffff'],
+    cloud: '#ffffff'
   },
   rocky: {
-    darkCrater: ['#2a1d15', '#3a2d25', '#4a3d35', '#5a4d45', '#6a5d55'],
-    crater: ['#4a3d35', '#5a4d45', '#6a5d55', '#7a6d65', '#8a7d75'],
-    base: ['#6a5d55', '#7a6d65', '#8a7d75', '#9a8d85', '#aa9d95'],
-    highland: ['#9a8d85', '#aa9d95', '#baada5', '#cabdb5', '#dacdc5'],
-    light: ['#cabdb5', '#dacdc5', '#eaddd5', '#faede5', '#fffdf5']
+    surface: ['#4a3d32', '#6a5d52', '#8a7d72', '#aa9d92'],
+    crater: ['#1a1512', '#2a251f', '#3a352c'],
+    highlight: ['#b0a090', '#d0c0b0']
   },
   desert: {
-    darkSand: ['#b89a6c', '#c8a47e', '#d2ae88', '#dcb892', '#e6c29c'],
-    sand: ['#d2b48c', '#dcbe96', '#e6c8a0', '#f0d2aa', '#fadcb4', '#ffebcc'],
-    lightSand: ['#e6c896', '#f0d2a0', '#fadcaa', '#ffe6b4', '#fff0be', '#fffac8'],
-    dune: ['#c8a47e', '#d2ae88', '#dcb892', '#e6c29c', '#f0cca6'],
-    rock: ['#908070', '#a09080', '#b0a090', '#c0b0a0', '#d0c0b0'],
-    canyon: ['#886644', '#987755', '#a88866', '#b89977', '#c8aa88']
+    sand: ['#d2b48c', '#e6c8a0', '#fadcb4'],
+    dune: ['#c8a070', '#e8c090'],
+    rock: ['#8a7a6a', '#aa9a8a'],
+    canyon: ['#705040', '#907060']
   },
   ice: {
-    deepIce: ['#5080a0', '#6090b0', '#70a0c0', '#80b0d0', '#90c0e0'],
-    ice: ['#a0c0d0', '#b0d0e0', '#c0e0f0', '#d0f0ff', '#e0f8ff'],
-    lightIce: ['#d0f0ff', '#e0f8ff', '#f0fcff', '#f8feff', '#ffffff'],
-    frost: ['#e0f8ff', '#f0fcff', '#f8feff', '#ffffff', '#ffffff'],
-    crevasse: ['#304050', '#405060', '#506070', '#607080', '#708090'],
-    glacier: ['#8ab0c0', '#9ac0d0', '#aad0e0', '#bae0f0', '#caf0ff']
+    surface: ['#90c8e0', '#b0e0f0', '#d0f8ff'],
+    deep: ['#4080a0', '#60a0c0'],
+    crevasse: ['#203040', '#405060']
   },
   frozen: {
-    ice: ['#90b0c0', '#a0c0d0', '#b0d0e0', '#c0e0f0', '#d0f0ff'],
-    nitrogen: ['#b0c0ff', '#c0d0ff', '#d0e0ff', '#e0f0ff', '#f0f8ff'],
-    methane: ['#ffc0d0', '#ffd0e0', '#ffe0f0', '#fff0f8', '#fffcfe'],
-    darkMatter: ['#203040', '#304050', '#405060', '#506070', '#607080']
+    nitrogen: ['#b8c8ff', '#d8e8ff', '#f8fcff'],
+    methane: ['#ffc8d8', '#ffe8f4'],
+    dark: ['#182028', '#384050']
+  },
+  tundra: {
+    permafrost: ['#8090a0', '#a0b0c0', '#c0d0e0'],
+    moss: ['#4a5a3a', '#6a7a5a'],
+    rock: ['#5a5a5a', '#7a7a7a']
+  },
+  savanna: {
+    grass: ['#a08040', '#c0a060', '#e0c080'],
+    earth: ['#8a6a4a', '#aa8a6a'],
+    tree: ['#4a6a3a', '#6a8a5a']
+  },
+  alpine: {
+    rock: ['#6a6a7a', '#8a8a9a'],
+    snow: ['#e8f0f8', '#ffffff'],
+    meadow: ['#5a8a5a', '#7aaa7a']
   },
   lava: {
-    lava: ['#ff2200', '#ff3300', '#ff4400', '#ff5500', '#ff6600', '#ff7700'],
-    brightLava: ['#ff7700', '#ff8800', '#ff9900', '#ffaa00', '#ffbb00', '#ffcc00'],
-    moltenRock: ['#cc3300', '#dd4400', '#ee5500', '#ff6600', '#ff7700'],
-    coolingCrust: ['#992200', '#aa3300', '#bb4400', '#cc5500', '#dd6600'],
-    solidCrust: ['#0a0a0a', '#1a1a1a', '#2a2a2a', '#3a3a3a', '#4a4a4a'],
-    volcanicRock: ['#2a1a1a', '#3a2a2a', '#4a3a3a', '#5a4a4a', '#6a5a5a']
+    hot: ['#ffff00', '#ff8800', '#ff4400'],
+    cooling: ['#ff3300', '#cc0000'],
+    crust: ['#1a1a1a', '#3a3a3a', '#5a5a5a']
   },
   volcanic: {
-    ash: ['#404040', '#505050', '#606060', '#707070', '#808080'],
-    rock: ['#2a1a1a', '#3a2a2a', '#4a3a3a', '#5a4a4a', '#6a5a5a'],
-    lavaFlow: ['#ff3300', '#ff4400', '#ff5500', '#ff6600', '#ff7700'],
-    sulfur: ['#bbbb00', '#cccc00', '#dddd22', '#eeee44', '#ffff66'],
-    pumice: ['#707070', '#808080', '#909090', '#a0a0a0', '#b0b0b0']
+    basalt: ['#2a2a30', '#4a4a50', '#6a6a70'],
+    ash: ['#505050', '#707070', '#909090'],
+    lava: ['#ff4400', '#ff6600', '#ff8800']
+  },
+  magma_ocean: {
+    magma: ['#ff6600', '#ff8800', '#ffaa00'],
+    cooling: ['#cc4400', '#aa2200'],
+    crust: ['#2a1a1a', '#4a3a3a']
+  },
+  sulfur: {
+    yellow: ['#ccaa00', '#eecc00', '#ffee00'],
+    orange: ['#cc6600', '#ee8800'],
+    red: ['#aa2200', '#cc4400']
   },
   ocean: {
-    abyss: ['#000d1a', '#001a33', '#00274d', '#003466', '#004180'],
-    deep: ['#004180', '#004e99', '#005bb3', '#0068cc', '#0075e6'],
-    mid: ['#0075e6', '#0088ee', '#009aff', '#00aaff', '#00bbff'],
-    shallow: ['#00bbff', '#22ccff', '#44ddff', '#66eeff', '#88ffff'],
-    surface: ['#88ffff', '#aaffff', '#ccffff', '#eeffff', '#ffffff']
+    deep: ['#000814', '#002846', '#004878'],
+    surface: ['#0098dc', '#20c0ff', '#60d0ff'],
+    foam: ['#e0f8ff', '#ffffff']
   },
-  jungle: {
-    deepForest: ['#0a3a0a', '#1a4a1a', '#2a5a2a', '#3a6a3a', '#4a7a4a'],
-    forest: ['#2a5a2a', '#3a6a3a', '#4a7a4a', '#5a8a5a', '#6a9a6a'],
-    canopy: ['#4a7a3a', '#5a8a4a', '#6a9a5a', '#7aaa6a', '#8aba7a'],
-    jungle: ['#1a6a1a', '#2a7a2a', '#3a8a3a', '#4a9a4a', '#5aaa5a'],
-    water: ['#004f80', '#0066aa', '#007acc', '#008cee', '#00aaff'],
-    vines: ['#0a5a0a', '#1a6a1a', '#2a7a2a', '#3a8a3a', '#4a9a4a'],
-    clouds: ['#d0f0d0', '#e0f8e0', '#f0fff0', '#f8fff8', '#ffffff']
+  archipelago: {
+    ocean: ['#004080', '#0066cc', '#0099ee'],
+    island: ['#4a7c59', '#6a9c79'],
+    beach: ['#e8d4b0', '#f8e4d0']
+  },
+  swamp: {
+    water: ['#2a4a3a', '#3a5a4a'],
+    vegetation: ['#3a5a2a', '#5a7a4a'],
+    mud: ['#4a3a2a', '#6a5a4a']
+  },
+  tropical: {
+    ocean: ['#0088cc', '#00aaee'],
+    jungle: ['#2a7a2a', '#4a9a4a'],
+    beach: ['#f0dcc0', '#fff4e0']
+  },
+  carbon: {
+    graphite: ['#1a1a1a', '#3a3a3a', '#5a5a5a'],
+    diamond: ['#c8d8e8', '#e8f4ff', '#ffffff']
+  },
+  crystal: {
+    amethyst: ['#6a2a8a', '#8a4aaa', '#aa6aca'],
+    quartz: ['#f0e8f8', '#fcf8fe', '#ffffff']
+  },
+  metal: {
+    iron: ['#4a4a5a', '#6a6a7a', '#8a8a9a'],
+    rust: ['#6a3a2a', '#8a5a4a'],
+    shine: ['#e0e8f0', '#f8fcff']
+  },
+  iron_core: {
+    core: ['#3a3a4a', '#5a5a6a'],
+    surface: ['#6a6a7a', '#8a8a9a']
+  },
+  diamond: {
+    surface: ['#e8f0f8', '#f8faff', '#ffffff'],
+    facet: ['#c8d8e8', '#d8e8f8']
+  },
+  eyeball: {
+    hot: ['#ff6600', '#ff8800'],
+    cold: ['#80c0e0', '#c0e8ff'],
+    terminator: ['#4a6a8a', '#6a8aaa']
+  },
+  tidally_locked: {
+    day: ['#ffcc88', '#ffeebb'],
+    night: ['#1a2a3a', '#2a3a4a'],
+    twilight: ['#6a5a4a', '#8a7a6a']
+  },
+  radioactive: {
+    glow: ['#00ff00', '#44ff44', '#88ff88'],
+    waste: ['#4a6a2a', '#6a8a4a'],
+    crater: ['#2a4a2a', '#4a6a4a']
+  },
+  toxic: {
+    acid: ['#88cc00', '#aaee00', '#ccff22'],
+    sludge: ['#445500', '#667700'],
+    gas: ['#99aa44', '#bbcc66']
   },
   super_earth: {
-    deepOcean: ['#002040', '#003060', '#004080', '#0050a0', '#0060c0'],
-    ocean: ['#0060c0', '#0070d0', '#0080e0', '#0090f0', '#00a0ff'],
-    continent: ['#2a5a2a', '#3a6a3a', '#4a7a4a', '#5a8a5a', '#6a9a6a'],
-    mountain: ['#5a4a3a', '#6a5a4a', '#7a6a5a', '#8a7a6a', '#9a8a7a'],
-    peak: ['#a09090', '#b0a0a0', '#c0b0b0', '#d0c0c0', '#e0d0d0'],
-    ice: ['#c0e0f0', '#d0f0ff', '#e0f8ff', '#f0fcff', '#ffffff']
+    ocean: ['#003366', '#005588'],
+    land: ['#5a8c6a', '#7aac8a'],
+    atmosphere: ['#aaccee', '#cceeff']
+  },
+  mega_earth: {
+    surface: ['#4a6a5a', '#6a8a7a'],
+    ocean: ['#004488', '#0066aa'],
+    cloud: ['#d0e0f0', '#ffffff']
+  },
+  jungle: {
+    canopy: ['#2a7a2a', '#4a9a4a', '#6aba6a'],
+    deep: ['#0a4a0a', '#2a6a2a'],
+    flower: ['#ff6688', '#ffaacc']
+  },
+  pangea: {
+    land: ['#7a9a6a', '#9aba8a'],
+    ocean: ['#004080', '#0066bb'],
+    desert: ['#c8a070', '#e8c090']
+  },
+  gas_giant: {
+    band1: ['#8b6914', '#ab8934', '#cba954'],
+    band2: ['#d4a574', '#f2d5a4', '#fce5b4'],
+    storm: ['#cc4422', '#ee6644']
+  },
+  hot_jupiter: {
+    band1: ['#ff6644', '#ff8866'],
+    band2: ['#ffaa88', '#ffccaa'],
+    glow: ['#ff4422', '#ff6644']
+  },
+  ice_giant: {
+    atmosphere: ['#1a4a7a', '#3a6a9a', '#5a8aba'],
+    methane: ['#40a0c0', '#60c0e0'],
+    storm: ['#ffffff', '#e8e8ff']
+  },
+  neptunian: {
+    deep: ['#1a3a6a', '#2a4a7a'],
+    upper: ['#4a7aaa', '#6a9aca'],
+    storm: ['#ffffff', '#e0e0ff']
+  },
+  chthonian: {
+    core: ['#4a3a3a', '#6a5a5a'],
+    surface: ['#8a7a7a', '#aa9a9a'],
+    scar: ['#2a1a1a', '#4a3a3a']
+  },
+  hycean: {
+    ocean: ['#004080', '#0066bb', '#0099ee'],
+    atmosphere: ['#80c0e0', '#c0e8ff'],
+    cloud: ['#ffffff', '#f0f8ff']
+  },
+  coreless: {
+    mantle: ['#6a5a4a', '#8a7a6a'],
+    surface: ['#aa9a8a', '#cabaa0']
+  },
+  protoplanet: {
+    debris: ['#4a4040', '#6a6060'],
+    hot: ['#ff8844', '#ffaa66'],
+    dust: ['#8a7a6a', '#aa9a8a']
   }
 };
 
-// Generate ULTRA-DETAILED planet with rivers, lakes, seas, mountains, etc.
-function generatePlanet(type, index) {
-  // Get realistic size for this planet type
-  const sizeRange = CONFIG.planetSizes[type] || CONFIG.planetSizes.rocky;
-  const size = getRandomSize(sizeRange.min, sizeRange.max);
+// ============================================================================
+// STAR GENERATOR - Optimized
+// ============================================================================
+function generateStar(stellarClass) {
+  const sizeRange = CONFIG.starSizes[stellarClass] || CONFIG.starSizes['G'];
+  const size = getRandom(sizeRange.min, sizeRange.max);
+  const frames = CONFIG.starFrames;
+  const palette = STAR_PALETTES[stellarClass] || STAR_PALETTES['G'];
 
-  console.log(`    Planet ${type}_${String(index).padStart(3, '0')} (${size}x${size}px)...`);
-  const frames = 24;
+  console.log(`  Generating ${stellarClass} star (${size}x${size}px, ${frames} frames)...`);
+
   const canvas = createCanvas(size * frames, size);
   const ctx = canvas.getContext('2d');
-  const noise = new AdvancedNoiseGenerator(Math.random() * 100000 + index * 1000);
-  const palette = PLANET_PALETTES[type] || PLANET_PALETTES.rocky;
+  const noise = new FastNoise(Math.floor(Math.random() * 1000000));
 
-  const params = {
-    hasOceans: ['terran', 'ocean', 'super_earth', 'hycean', 'eyeball'].includes(type),
-    hasRivers: ['terran', 'jungle', 'super_earth'].includes(type),
-    hasLakes: ['terran', 'jungle', 'super_earth', 'ice', 'frozen'].includes(type),
-    hasMountains: !['ocean', 'lava'].includes(type),
-    hasCanyons: ['desert', 'rocky', 'volcanic', 'mars'].includes(type) || type === 'terran',
-    hasVolcanoes: ['lava', 'volcanic', 'tidally_locked', 'chthonian'].includes(type),
-    hasClouds: ['terran', 'super_earth', 'jungle', 'hycean'].includes(type),
-    hasAtmosphere: ['terran', 'super_earth', 'jungle', 'hycean', 'eyeball'].includes(type),
-    hasIceCaps: ['terran', 'super_earth', 'ice', 'frozen', 'eyeball'].includes(type),
-    hasCities: type === 'terran' && Math.random() > 0.6,
-    hasDesertDunes: type === 'desert',
-    hasGlaciers: ['ice', 'frozen'].includes(type),
-    rotationSpeed: Math.random() * 0.3 + 0.2
-  };
+  const isGiant = ['RedGiant', 'BlueGiant', 'RedSuperGiant', 'BlueSuperGiant'].includes(stellarClass);
+  const radius = size * 0.35; // Keep star within bounds
+  const centerX = size / 2;
+  const centerY = size / 2;
 
   for (let frame = 0; frame < frames; frame++) {
     const offsetX = frame * size;
-    const centerX = size / 2, centerY = size / 2;
-    const radius = size * 0.44;
     const time = frame / frames;
     const imageData = ctx.createImageData(size, size);
     const data = imageData.data;
 
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        const dx = x - centerX, dy = y - centerY;
+        const dx = x - centerX;
+        const dy = y - centerY;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
         const idx = (y * size + x) * 4;
 
+        // Outer glow
+        if (dist < radius * 2.5 && dist > radius) {
+          const glowFalloff = Math.pow(1 - (dist - radius) / (radius * 1.5), 2);
+          if (glowFalloff > 0.01) {
+            const glowColor = hexToRgb(palette.glow);
+            const intensity = glowFalloff * 0.4;
+            data[idx] = glowColor.r * intensity;
+            data[idx + 1] = glowColor.g * intensity;
+            data[idx + 2] = glowColor.b * intensity;
+            data[idx + 3] = Math.floor(intensity * 255);
+          }
+        }
+
+        // Star surface
         if (dist <= radius) {
           const normalizedDist = dist / radius;
           const z = Math.sqrt(Math.max(0, 1 - normalizedDist * normalizedDist));
-          const longitude = (angle + time * Math.PI * 2 * params.rotationSpeed) / Math.PI * 180;
-          const latitude = Math.asin((y - centerY) / radius) / Math.PI * 180;
-          const texX = longitude / 25;
-          const texY = latitude / 25;
 
-          // Domain warping for organic terrain
-          const warped = noise.domainWarp(texX, texY, index, 4);
+          // Spherical coordinates for texture
+          const phi = Math.atan2(dy, dx) + time * Math.PI * 2;
+          const theta = Math.acos(Math.max(-1, Math.min(1, dy / radius)));
+          const texX = phi * 2;
+          const texY = theta * 2;
 
-          // MULTI-LAYER TERRAIN GENERATION
-          const continentNoise = noise.fbm(warped.x * 0.4, warped.y * 0.4, index, 8);
-          const detailNoise = noise.fbm(warped.x * 2.5, warped.y * 2.5, index + 100, 10);
-          const microDetail = noise.turbulence(texX * 10, texY * 10, index + 200, 8);
+          // Surface features
+          const granulation = noise.fbm(texX * 4, texY * 4, time * 2, 4) * 0.15;
+          const cells = noise.fbm(texX * 2, texY * 2, time, 3) * 0.1;
 
-          // ORGANIC MOUNTAINS - Irregular peaks with natural clustering
-          let mountains = 0;
-          if (params.hasMountains) {
-            // Multi-scale ridged noise creates realistic mountain ranges
-            const mountainBase = noise.ridged(warped.x * 1.8 + microDetail * 0.5, warped.y * 1.8 - microDetail * 0.5, index + 50, 9);
-            const mountainDetail = noise.ridged(warped.x * 4.5, warped.y * 4.5, index + 75, 7);
-            const mountainCluster = noise.turbulence(texX * 1.2, texY * 1.2, index + 90, 6);
-
-            // Combine layers for non-uniform, organic mountain ranges
-            mountains = mountainBase * 0.6 + mountainDetail * 0.25 + mountainCluster * 0.15;
-            // Random variation breaks up geometric patterns
-            if (Math.random() > 0.7) mountains *= 0.7 + Math.random() * 0.6;
+          // Sunspots
+          let spotDarkening = 1.0;
+          const spotNoise = noise.fbm(texX * 3, texY * 3, time * 0.2, 3);
+          if (spotNoise < 0.2 && Math.abs(normalizedDist) < 0.8) {
+            spotDarkening = 0.5 + spotNoise * 2.5;
           }
 
-          // CHAOTIC CANYONS - Branching, erosion-like patterns
-          let canyons = 0;
-          if (params.hasCanyons) {
-            // Multiple ridged layers create complex canyon networks
-            const canyonMain = noise.ridged(warped.x * 2.2 + detailNoise, warped.y * 2.2 - detailNoise, index + 150, 7);
-            const canyonBranch = noise.ridged(warped.x * 5.5, warped.y * 5.5, index + 175, 6);
-            const erosion = noise.turbulence(texX * 3.5, texY * 3.5, index + 190, 8);
+          // Limb darkening
+          const limbDarkening = 0.5 + 0.5 * Math.pow(z, 0.4);
 
-            // Irregular canyon depths and widths
-            canyons = -(canyonMain * 0.5 + canyonBranch * 0.3 + erosion * 0.2) * 0.5;
-            // Break up patterns with randomness
-            if (Math.random() > 0.6) canyons *= 0.5 + Math.random() * 0.8;
+          let brightness = (0.6 + granulation + cells) * spotDarkening * limbDarkening;
+          brightness = Math.max(0.2, Math.min(1.2, brightness));
+
+          // Color from palette
+          const colorIdx = Math.min(palette.core.length - 1, Math.floor(brightness * palette.core.length));
+          const color = hexToRgb(palette.core[colorIdx]);
+
+          data[idx] = Math.min(255, color.r * brightness);
+          data[idx + 1] = Math.min(255, color.g * brightness);
+          data[idx + 2] = Math.min(255, color.b * brightness);
+          data[idx + 3] = 255;
+        }
+      }
+    }
+
+    ctx.putImageData(imageData, offsetX, 0);
+  }
+
+  return { canvas, size };
+}
+
+// ============================================================================
+// PLANET GENERATOR - Optimized
+// ============================================================================
+function generatePlanet(type, index) {
+  const sizeRange = CONFIG.planetSizes[type] || CONFIG.planetSizes.terran;
+  const size = getRandom(sizeRange.min, sizeRange.max);
+  const frames = CONFIG.planetFrames;
+  const palette = PLANET_PALETTES[type] || PLANET_PALETTES.terran;
+
+  console.log(`    ${type}_${String(index).padStart(3, '0')} (${size}x${size}px)...`);
+
+  const canvas = createCanvas(size * frames, size);
+  const ctx = canvas.getContext('2d');
+  const noise = new FastNoise(Math.floor(Math.random() * 1000000) + index * 10000);
+
+  const radius = size * 0.42; // Keep planet within bounds with room for atmosphere
+  const centerX = size / 2;
+  const centerY = size / 2;
+
+  const isGasGiant = ['gas_giant', 'hot_jupiter', 'ice_giant', 'neptunian'].includes(type);
+  const hasAtmosphere = ['terran', 'ocean', 'jungle', 'tropical', 'super_earth', 'mega_earth', 'hycean'].includes(type);
+
+  for (let frame = 0; frame < frames; frame++) {
+    const offsetX = frame * size;
+    const time = frame / frames;
+    const imageData = ctx.createImageData(size, size);
+    const data = imageData.data;
+
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const idx = (y * size + x) * 4;
+
+        // Atmosphere glow
+        if (hasAtmosphere && dist > radius && dist < radius * 1.15) {
+          const atmosFalloff = 1 - (dist - radius) / (radius * 0.15);
+          if (atmosFalloff > 0) {
+            data[idx] = 150 * atmosFalloff;
+            data[idx + 1] = 200 * atmosFalloff;
+            data[idx + 2] = 255 * atmosFalloff;
+            data[idx + 3] = Math.floor(atmosFalloff * 100);
           }
+        }
 
-          // ORGANIC VOLCANOES - Scattered, irregular volcanic features
-          let volcanoes = 0;
-          if (params.hasVolcanoes) {
-            // Multi-scale noise creates realistic volcanic clustering
-            const volcanoNoise1 = noise.fbm(texX * 3 + continentNoise * 2, texY * 3 - continentNoise * 2, index + 250, 5);
-            const volcanoNoise2 = noise.turbulence(texX * 7, texY * 7, index + 275, 6);
-            const volcanoCluster = noise.fbm(texX * 1.5, texY * 1.5, index + 290, 4);
+        // Planet surface
+        if (dist <= radius) {
+          const normalizedDist = dist / radius;
+          const z = Math.sqrt(Math.max(0, 1 - normalizedDist * normalizedDist));
 
-            // Irregular volcanic activity zones (not circular)
-            const volcanoPattern = volcanoNoise1 * 0.5 + volcanoNoise2 * 0.3 + volcanoCluster * 0.2;
-            const volcanoThreshold = 0.78 + Math.random() * 0.08;
+          // Spherical coordinates
+          const lat = Math.asin(dy / Math.max(1, dist));
+          const lon = Math.atan2(dx, z) + time * Math.PI * 2;
+          const texX = lon * 2;
+          const texY = lat * 4;
 
-            if (volcanoPattern > volcanoThreshold) {
-              volcanoes = (volcanoPattern - volcanoThreshold) * (2.5 + Math.random() * 1.5);
-            }
-          }
+          let r, g, b;
 
-          // ORGANIC CRATERS - Irregular impact patterns with varying sizes
-          let craters = 0;
-          const craterNoise1 = noise.fbm(texX * 6 + microDetail, texY * 6 - microDetail, index + 300, 6);
-          const craterNoise2 = noise.turbulence(texX * 12, texY * 12, index + 325, 7);
-          const craterCluster = noise.fbm(texX * 2, texY * 2, index + 340, 5);
+          if (isGasGiant) {
+            // Gas giant bands
+            const bandNoise = noise.fbm(texX * 0.5, texY * 2, time * 0.5, 3);
+            const bandValue = (Math.sin(lat * 12 + bandNoise * 2) + 1) * 0.5;
+            const turbulence = noise.turbulence(texX * 2, texY * 1, time, 3) * 0.2;
 
-          // Multi-scale crater impacts (not uniform circles)
-          const craterPattern = craterNoise1 * 0.6 + craterNoise2 * 0.25 + craterCluster * 0.15;
-          const craterThreshold = 0.85 + Math.random() * 0.06;
+            const band1 = palette.band1 || ['#aa8844', '#ccaa66'];
+            const band2 = palette.band2 || ['#ddcc88', '#ffeeaa'];
+            const color1 = hexToRgb(band1[Math.floor(bandNoise * band1.length)]);
+            const color2 = hexToRgb(band2[Math.floor(bandNoise * band2.length)]);
 
-          if (craterPattern > craterThreshold) {
-            // Variable crater depth and size
-            craters = -(craterPattern - craterThreshold) * (3 + Math.random() * 3);
-          }
+            r = color1.r * (1 - bandValue) + color2.r * bandValue;
+            g = color1.g * (1 - bandValue) + color2.g * bandValue;
+            b = color1.b * (1 - bandValue) + color2.b * bandValue;
 
-          // ORGANIC DESERT DUNES - Wave-like patterns with chaos
-          let duneNoise = 0;
-          if (params.hasDesertDunes) {
-            // Multiple noise layers create realistic wind-blown dune patterns
-            const duneWaves = noise.fbm(texX * 4 + detailNoise, texY * 4, index + 400, 6);
-            const duneRipples = noise.fbm(texX * 8, texY * 8 - detailNoise, index + 425, 7);
-            const windPatterns = noise.turbulence(texX * 6, texY * 6, index + 450, 5);
-
-            // Asymmetric, organic dune shapes
-            duneNoise = (duneWaves * 0.5 + duneRipples * 0.3 + windPatterns * 0.2) * 0.3;
-            // Add directional bias (wind direction)
-            duneNoise += Math.sin(texX * 3) * Math.cos(texY * 2) * 0.1;
-          }
-
-          // Combine elevation
-          let elevation = continentNoise * 0.4 + detailNoise * 0.25 + microDetail * 0.15;
-          elevation += mountains * 0.5 + canyons + volcanoes + craters + duneNoise;
-          elevation = Math.max(-1, Math.min(1, elevation));
-
-          // ORGANIC, CHAOTIC RIVERS - Multi-scale, irregular branching patterns
-          let isRiver = false;
-          if (params.hasRivers && elevation > 0.35 && elevation < 0.75) {
-            // Multiple noise layers create complex, winding river networks
-            const riverNoise1 = noise.fbm(texX * 8 + microDetail * 2, texY * 8 + microDetail * 2, index + 500, 6);
-            const riverNoise2 = noise.turbulence(texX * 12 - microDetail, texY * 12 - microDetail, index + 550, 7);
-            const riverFlow = noise.turbulence(texX * 6 + detailNoise, texY * 6 - detailNoise, index + 600, 8);
-
-            // Complex conditions create irregular, organic river shapes (not circular)
-            const riverPattern = riverNoise1 * 0.4 + riverNoise2 * 0.3 + riverFlow * 0.3;
-            const riverThreshold = 0.45 + microDetail * 0.1; // Variable threshold for chaos
-
-            if (riverPattern < riverThreshold && riverFlow > 0.6 && Math.random() > 0.2) {
-              isRiver = true;
-              elevation -= 0.15 + Math.random() * 0.05; // Variable depth
-            }
-          }
-
-          // ORGANIC LAKES - Irregular shapes with fractal edges
-          let isLake = false;
-          if (params.hasLakes && elevation > 0.25 && elevation < 0.45) {
-            // Multi-scale noise creates natural, non-circular lake shapes
-            const lakeNoise1 = noise.fbm(texX * 5 + continentNoise, texY * 5 - continentNoise, index + 700, 7);
-            const lakeNoise2 = noise.turbulence(texX * 9, texY * 9, index + 750, 6);
-            const lakeBoundary = noise.fbm(texX * 15, texY * 15, index + 800, 8);
-
-            // Irregular lake boundaries with fractal detail
-            const lakePattern = lakeNoise1 * 0.5 + lakeNoise2 * 0.3 + lakeBoundary * 0.2;
-
-            if (lakePattern > 0.68 + Math.random() * 0.08) {
-              isLake = true;
-              elevation = 0.32 + Math.random() * 0.06; // Variable lake depth
-            }
-          }
-
-          // Phong lighting
-          const lightDir = { x: 0.5, y: 0.3, z: 0.8 };
-          const normal = { x: dx / radius, y: dy / radius, z: z };
-          const dotProduct = normal.x * lightDir.x + normal.y * lightDir.y + normal.z * lightDir.z;
-          let lighting = Math.max(0.12, Math.min(1, dotProduct * 0.75 + 0.25));
-          lighting *= (0.75 + elevation * 0.35);
-
-          // COLOR SELECTION
-          let finalColor;
-
-          if (isRiver && palette.riverBed) {
-            finalColor = hexToRgb(palette.riverBed[Math.floor(Math.random() * palette.riverBed.length)]);
-          } else if (isLake && palette.lakeBed) {
-            finalColor = hexToRgb(palette.lakeBed[Math.floor(Math.random() * palette.lakeBed.length)]);
-          } else if (params.hasOceans && elevation < 0.38) {
-            // Ocean depth
-            const depth = (0.38 - elevation) / 0.5;
-            const oceanKeys = Object.keys(palette).filter(k => k.includes('ocean') || k.includes('water') || k.includes('deep') || k.includes('abyss'));
-            if (oceanKeys.length > 0) {
-              const key = oceanKeys[Math.min(Math.floor(depth * oceanKeys.length), oceanKeys.length - 1)];
-              finalColor = hexToRgb(palette[key][Math.floor(Math.random() * palette[key].length)]);
-            } else {
-              finalColor = hexToRgb('#004080');
-            }
-          } else if (params.hasVolcanoes && volcanoes > 0.5) {
-            // Active lava
-            const lavaKeys = Object.keys(palette).filter(k => k.includes('lava') || k.includes('molten'));
-            if (lavaKeys.length > 0) {
-              finalColor = hexToRgb(palette[lavaKeys[0]][Math.floor(Math.random() * palette[lavaKeys[0]].length)]);
-              lighting *= 1.6; // Lava glows
-            } else {
-              finalColor = hexToRgb('#ff4400');
-              lighting *= 1.6;
-            }
-          } else if (params.hasIceCaps && Math.abs(latitude) > 65) {
-            // Ice caps
-            const iceKeys = Object.keys(palette).filter(k => k.includes('ice') || k.includes('snow') || k.includes('frost') || k.includes('glacier'));
-            if (iceKeys.length > 0) {
-              finalColor = hexToRgb(palette[iceKeys[Math.floor(Math.random() * iceKeys.length)]][Math.floor(Math.random() * palette[iceKeys[0]].length)]);
-            } else {
-              finalColor = hexToRgb('#ffffff');
-            }
-          } else if (elevation > 0.75 && params.hasMountains) {
-            // Mountain peaks
-            const mountainKeys = Object.keys(palette).filter(k => k.includes('mountain') || k.includes('peak') || k.includes('highland'));
-            if (mountainKeys.length > 0) {
-              finalColor = hexToRgb(palette[mountainKeys[0]][Math.floor(Math.random() * palette[mountainKeys[0]].length)]);
-            } else {
-              finalColor = hexToRgb('#8a7a6a');
+            // Storm
+            const stormNoise = noise.fbm(texX * 3, texY * 3, time * 0.3, 3);
+            if (stormNoise > 0.75 && Math.abs(lat) < 0.5) {
+              const storm = palette.storm || ['#cc4422'];
+              const stormColor = hexToRgb(storm[0]);
+              const stormIntensity = (stormNoise - 0.75) * 4;
+              r = r * (1 - stormIntensity) + stormColor.r * stormIntensity;
+              g = g * (1 - stormIntensity) + stormColor.g * stormIntensity;
+              b = b * (1 - stormIntensity) + stormColor.b * stormIntensity;
             }
           } else {
-            // General terrain
-            const terrainKeys = Object.keys(palette).filter(k => !k.includes('ocean') && !k.includes('water') && !k.includes('deep') && !k.includes('lava') && !k.includes('ice') && !k.includes('snow'));
-            if (terrainKeys.length > 0) {
-              const keyIdx = Math.floor(Math.abs(elevation) * terrainKeys.length) % terrainKeys.length;
-              const selectedKey = terrainKeys[keyIdx];
-              const colorArray = palette[selectedKey];
-              finalColor = hexToRgb(colorArray[Math.floor(detailNoise * (colorArray.length - 1))]);
-            } else {
-              finalColor = hexToRgb('#8a7a6a');
-            }
+            // Terrestrial planet
+            const warped = noise.warp(texX, texY, time * 0.5, 1);
+            const elevation = noise.fbm(warped.x * 2, warped.y * 2, time * 0.3, 4);
+            const detail = noise.fbm(warped.x * 6, warped.y * 6, time * 0.5, 3) * 0.3;
+
+            const totalElev = elevation + detail * 0.3;
+
+            // Get colors based on type
+            const colors = getTerrainColors(type, totalElev, lat, palette);
+            r = colors.r;
+            g = colors.g;
+            b = colors.b;
           }
 
-          // Apply lighting
-          data[idx] = finalColor.r * lighting;
-          data[idx + 1] = finalColor.g * lighting;
-          data[idx + 2] = finalColor.b * lighting;
+          // Limb darkening
+          const limbDarkening = 0.4 + 0.6 * Math.pow(z, 0.5);
+          r *= limbDarkening;
+          g *= limbDarkening;
+          b *= limbDarkening;
+
+          data[idx] = Math.min(255, Math.max(0, r));
+          data[idx + 1] = Math.min(255, Math.max(0, g));
+          data[idx + 2] = Math.min(255, Math.max(0, b));
           data[idx + 3] = 255;
-
-          // CLOUD LAYER
-          if (params.hasClouds && palette.clouds) {
-            const cloudNoise = noise.fbm(texX * 3.5 + time * 8, texY * 3.5, index + 800, 8);
-            const cloudTurbulence = noise.turbulence(texX * 4 + time * 6, texY * 4, index + 900, 6);
-            if (cloudNoise > 0.52 && cloudTurbulence > 0.48) {
-              const cloudDensity = ((cloudNoise - 0.52) / 0.48) * ((cloudTurbulence - 0.48) / 0.52);
-              const cloudAlpha = Math.min(0.85, cloudDensity);
-              const cloudColor = hexToRgb(palette.clouds[Math.floor(cloudNoise * (palette.clouds.length - 1))]);
-              data[idx] = data[idx] * (1 - cloudAlpha) + cloudColor.r * cloudAlpha * lighting;
-              data[idx + 1] = data[idx + 1] * (1 - cloudAlpha) + cloudColor.g * cloudAlpha * lighting;
-              data[idx + 2] = data[idx + 2] * (1 - cloudAlpha) + cloudColor.b * cloudAlpha * lighting;
-            }
-          }
-
-          // CITY LIGHTS on night side
-          if (params.hasCities && dotProduct < 0.15 && elevation > 0.38 && elevation < 0.65) {
-            const cityNoise = noise.fbm(texX * 15, texY * 15, index + 1000, 5);
-            if (cityNoise > 0.82) {
-              const cityBrightness = (cityNoise - 0.82) / 0.18;
-              data[idx] += 120 * cityBrightness;
-              data[idx + 1] += 100 * cityBrightness;
-              data[idx + 2] += 30 * cityBrightness;
-            }
-          }
-        } else if (params.hasAtmosphere && dist < radius * 1.12) {
-          // Atmospheric glow
-          const atmosDist = (dist - radius) / (radius * 0.12);
-          const atmosNoise = noise.fbm(angle * 15, dist / 15, time * 5, 6);
-          const atmosBrightness = Math.max(0, (1 - atmosDist) * atmosNoise * 0.5);
-          if (atmosBrightness > 0.08) {
-            const atmosColor = hexToRgb('#77aaff');
-            data[idx] = atmosColor.r * atmosBrightness;
-            data[idx + 1] = atmosColor.g * atmosBrightness;
-            data[idx + 2] = atmosColor.b * atmosBrightness;
-            data[idx + 3] = Math.floor(atmosBrightness * 255);
-          }
         }
       }
     }
@@ -690,94 +693,213 @@ function generatePlanet(type, index) {
     ctx.putImageData(imageData, offsetX, 0);
   }
 
-  return canvas;
+  return { canvas, size };
 }
 
-// Generate moon sprite with enhanced detail
-function generateMoon(index) {
-  // Get realistic varied size for moons
-  const size = getRandomSize(CONFIG.moonSizes.min, CONFIG.moonSizes.max);
+function getTerrainColors(type, elevation, lat, palette) {
+  let r = 128, g = 128, b = 128;
 
-  console.log(`    Moon ${String(index).padStart(3, '0')} (${size}x${size}px)...`);
-  const frames = 16;
-  const canvas = createCanvas(size * frames, size);
-  const ctx = canvas.getContext('2d');
-  const noise = new AdvancedNoiseGenerator(500000 + index * 1000);
-
-  const moonTypes = ['rocky', 'icy', 'volcanic', 'captured_asteroid'];
-  const moonType = moonTypes[index % moonTypes.length];
-
-  const palettes = {
-    rocky: {
-      highland: ['#a09080', '#b0a090', '#c0b0a0', '#d0c0b0', '#e0d0c0', '#f0e0d0'],
-      mare: ['#404040', '#505050', '#606060', '#707070', '#808080', '#909090'],
-      crater: ['#202020', '#303030', '#404040', '#505050', '#606060', '#707070']
-    },
-    icy: {
-      ice: ['#b0c0d0', '#c0d0e0', '#d0e0f0', '#e0f0ff', '#f0f8ff', '#ffffff'],
-      cracks: ['#304050', '#405060', '#506070', '#607080', '#708090', '#8090a0'],
-      smooth: ['#d0e0f0', '#e0f0ff', '#f0f8ff', '#f8fcff', '#ffffff']
-    },
-    volcanic: {
-      sulfur: ['#aaaa00', '#bbbb00', '#cccc00', '#dddd22', '#eeee44', '#ffff66'],
-      lava: ['#ff2200', '#ff3300', '#ff4400', '#ff6600', '#ff8800', '#ffaa00'],
-      rock: ['#2a1a1a', '#3a2a2a', '#4a3a3a', '#5a4a4a', '#6a5a5a', '#7a6a6a']
-    },
-    captured_asteroid: {
-      rock: ['#4a3a3a', '#5a4a4a', '#6a5a5a', '#7a6a6a', '#8a7a7a', '#9a8a8a'],
-      metal: ['#606070', '#707080', '#808090', '#9090a0', '#a0a0b0', '#b0b0c0'],
-      dark: ['#1a1a1a', '#2a2a2a', '#3a3a3a', '#4a4a4a', '#5a5a5a', '#6a6a6a']
-    }
+  // Get first available color array from palette
+  const getColor = (arr, idx = 0) => {
+    if (!arr || arr.length === 0) return { r: 128, g: 128, b: 128 };
+    return hexToRgb(arr[Math.min(idx, arr.length - 1)]);
   };
 
-  const palette = palettes[moonType];
+  switch (type) {
+    case 'terran':
+    case 'super_earth':
+    case 'mega_earth':
+      if (elevation < 0.35) {
+        const c = getColor(palette.ocean, Math.floor(elevation * 10));
+        r = c.r; g = c.g; b = c.b;
+      } else if (elevation < 0.5) {
+        const c = getColor(palette.land, 0);
+        r = c.r; g = c.g; b = c.b;
+      } else if (elevation < 0.7) {
+        const c = getColor(palette.land, 2);
+        r = c.r; g = c.g; b = c.b;
+      } else if (elevation < 0.85) {
+        const c = getColor(palette.mountain, 1);
+        r = c.r; g = c.g; b = c.b;
+      } else {
+        const c = getColor(palette.snow, 1);
+        r = c.r; g = c.g; b = c.b;
+      }
+      break;
+
+    case 'rocky':
+      const rockIdx = Math.floor(elevation * 4);
+      const rc = getColor(palette.surface, rockIdx);
+      r = rc.r; g = rc.g; b = rc.b;
+      if (elevation < 0.2) {
+        const cc = getColor(palette.crater, 1);
+        r = cc.r; g = cc.g; b = cc.b;
+      }
+      break;
+
+    case 'desert':
+      if (elevation < 0.6) {
+        const sc = getColor(palette.sand, Math.floor(elevation * 5));
+        r = sc.r; g = sc.g; b = sc.b;
+      } else {
+        const dc = getColor(palette.dune, Math.floor((elevation - 0.6) * 5));
+        r = dc.r; g = dc.g; b = dc.b;
+      }
+      break;
+
+    case 'ice':
+    case 'frozen':
+      const ic = getColor(palette.surface || palette.nitrogen, Math.floor(elevation * 3));
+      r = ic.r; g = ic.g; b = ic.b;
+      break;
+
+    case 'lava':
+    case 'volcanic':
+    case 'magma_ocean':
+      if (elevation > 0.6) {
+        const hc = getColor(palette.hot || palette.lava || palette.magma, 1);
+        r = hc.r; g = hc.g; b = hc.b;
+      } else {
+        const cc = getColor(palette.crust || palette.basalt, 1);
+        r = cc.r; g = cc.g; b = cc.b;
+      }
+      break;
+
+    case 'ocean':
+    case 'hycean':
+      const oc = getColor(palette.ocean || palette.deep, Math.floor(elevation * 4));
+      r = oc.r; g = oc.g; b = oc.b;
+      break;
+
+    case 'jungle':
+    case 'tropical':
+      if (elevation < 0.3) {
+        const wc = getColor(palette.ocean, 0);
+        r = wc.r; g = wc.g; b = wc.b;
+      } else {
+        const jc = getColor(palette.canopy || palette.jungle, Math.floor(elevation * 3));
+        r = jc.r; g = jc.g; b = jc.b;
+      }
+      break;
+
+    case 'radioactive':
+      if (elevation > 0.7) {
+        const gc = getColor(palette.glow, 1);
+        r = gc.r; g = gc.g; b = gc.b;
+      } else {
+        const wc = getColor(palette.waste, 0);
+        r = wc.r; g = wc.g; b = wc.b;
+      }
+      break;
+
+    case 'toxic':
+      const tc = getColor(palette.acid || palette.sludge, Math.floor(elevation * 2));
+      r = tc.r; g = tc.g; b = tc.b;
+      break;
+
+    case 'carbon':
+      const cc = getColor(palette.graphite, Math.floor(elevation * 3));
+      r = cc.r; g = cc.g; b = cc.b;
+      break;
+
+    case 'crystal':
+      const crc = getColor(palette.amethyst || palette.quartz, Math.floor(elevation * 3));
+      r = crc.r; g = crc.g; b = crc.b;
+      break;
+
+    case 'metal':
+    case 'iron_core':
+      const mc = getColor(palette.iron || palette.core, Math.floor(elevation * 3));
+      r = mc.r; g = mc.g; b = mc.b;
+      break;
+
+    default:
+      // Generic fallback - use first available palette entry
+      const keys = Object.keys(palette);
+      if (keys.length > 0) {
+        const firstKey = keys[0];
+        const fc = getColor(palette[firstKey], Math.floor(elevation * 3));
+        r = fc.r; g = fc.g; b = fc.b;
+      }
+  }
+
+  return { r, g, b };
+}
+
+// ============================================================================
+// MOON GENERATOR - Optimized
+// ============================================================================
+function generateMoon(index) {
+  const size = getRandom(CONFIG.moonSizes.min, CONFIG.moonSizes.max);
+  const frames = CONFIG.moonFrames;
+
+  console.log(`    moon_${String(index).padStart(3, '0')} (${size}x${size}px)...`);
+
+  const canvas = createCanvas(size * frames, size);
+  const ctx = canvas.getContext('2d');
+  const noise = new FastNoise(Math.floor(Math.random() * 1000000) + index * 10000);
+
+  const radius = size * 0.42;
+  const centerX = size / 2;
+  const centerY = size / 2;
+
+  // Moon type
+  const types = ['rocky', 'icy', 'volcanic'];
+  const moonType = types[index % types.length];
 
   for (let frame = 0; frame < frames; frame++) {
     const offsetX = frame * size;
-    const centerX = size / 2, centerY = size / 2;
-    const radius = size * 0.44;
     const time = frame / frames;
     const imageData = ctx.createImageData(size, size);
     const data = imageData.data;
 
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        const dx = x - centerX, dy = y - centerY;
+        const dx = x - centerX;
+        const dy = y - centerY;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
         const idx = (y * size + x) * 4;
 
         if (dist <= radius) {
           const normalizedDist = dist / radius;
           const z = Math.sqrt(Math.max(0, 1 - normalizedDist * normalizedDist));
-          const longitude = (angle + time * Math.PI * 2) / Math.PI * 180;
-          const latitude = Math.asin((y - centerY) / radius) / Math.PI * 180;
-          const texX = longitude / 20, texY = latitude / 20;
 
-          const baseNoise = noise.fbm(texX, texY, index, 10);
-          const detailNoise = noise.fbm(texX * 6, texY * 6, index + 100, 12);
-          const microDetail = noise.turbulence(texX * 12, texY * 12, index + 200, 8);
+          const lon = Math.atan2(dx, z) + time * Math.PI * 2;
+          const lat = Math.asin(dy / Math.max(1, dist));
 
-          // Heavy cratering
-          const craterNoise = noise.fbm(texX * 10, texY * 10, index + 300, 7);
-          const craters = craterNoise > 0.78 ? -(craterNoise - 0.78) * 3 : 0;
+          const elevation = noise.fbm(lon * 3, lat * 3, index, 4);
+          const craters = noise.fbm(lon * 8, lat * 8, index + 100, 3);
 
-          const elevation = baseNoise * 0.5 + detailNoise * 0.35 + microDetail * 0.15 + craters;
+          let r, g, b;
 
-          const lightDir = { x: 0.6, y: 0.4, z: 0.7 };
-          const normal = { x: dx / radius, y: dy / radius, z: z };
-          const dotProduct = normal.x * lightDir.x + normal.y * lightDir.y + normal.z * lightDir.z;
-          let lighting = Math.max(0.08, Math.min(1, dotProduct * 0.85 + 0.15));
-          lighting *= (0.65 + elevation * 0.45);
+          if (moonType === 'rocky') {
+            const base = 80 + elevation * 60;
+            r = base; g = base * 0.95; b = base * 0.9;
+            if (craters < 0.25) {
+              r *= 0.6; g *= 0.6; b *= 0.6;
+            }
+          } else if (moonType === 'icy') {
+            const base = 180 + elevation * 50;
+            r = base * 0.9; g = base * 0.95; b = base;
+            if (craters < 0.2) {
+              r *= 0.7; g *= 0.75; b *= 0.8;
+            }
+          } else {
+            const base = 60 + elevation * 40;
+            r = base * 1.2; g = base * 0.8; b = base * 0.6;
+            if (elevation > 0.7) {
+              r = 255; g = 100 + elevation * 100; b = 0;
+            }
+          }
 
-          const terrainKeys = Object.keys(palette);
-          const selectedKey = terrainKeys[Math.floor(Math.abs(elevation) * terrainKeys.length) % terrainKeys.length];
-          const colorArray = palette[selectedKey];
-          const finalColor = hexToRgb(colorArray[Math.floor(Math.abs(detailNoise) * (colorArray.length - 1))]);
+          const limbDarkening = 0.4 + 0.6 * Math.pow(z, 0.5);
+          r *= limbDarkening;
+          g *= limbDarkening;
+          b *= limbDarkening;
 
-          data[idx] = finalColor.r * lighting;
-          data[idx + 1] = finalColor.g * lighting;
-          data[idx + 2] = finalColor.b * lighting;
+          data[idx] = Math.min(255, Math.max(0, r));
+          data[idx + 1] = Math.min(255, Math.max(0, g));
+          data[idx + 2] = Math.min(255, Math.max(0, b));
           data[idx + 3] = 255;
         }
       }
@@ -786,91 +908,72 @@ function generateMoon(index) {
     ctx.putImageData(imageData, offsetX, 0);
   }
 
-  return canvas;
+  return { canvas, size };
 }
 
-// Generate asteroid sprite with enhanced detail
+// ============================================================================
+// ASTEROID GENERATOR - Optimized
+// ============================================================================
 function generateAsteroid(index) {
-  // Get highly varied size for asteroids (from small rocks to large planetoids)
-  const size = getRandomSize(CONFIG.asteroidSizes.min, CONFIG.asteroidSizes.max);
+  const size = getRandom(CONFIG.asteroidSizes.min, CONFIG.asteroidSizes.max);
+  const frames = CONFIG.asteroidFrames;
 
-  console.log(`    Asteroid ${String(index).padStart(3, '0')} (${size}x${size}px)...`);
-  const frames = 12;
+  console.log(`    asteroid_${String(index).padStart(3, '0')} (${size}x${size}px)...`);
+
   const canvas = createCanvas(size * frames, size);
   const ctx = canvas.getContext('2d');
-  const noise = new AdvancedNoiseGenerator(600000 + index * 1000);
+  const noise = new FastNoise(Math.floor(Math.random() * 1000000) + index * 10000);
 
-  const asteroidTypes = ['rocky', 'metallic', 'carbonaceous', 'icy'];
-  const asteroidType = asteroidTypes[index % asteroidTypes.length];
+  const centerX = size / 2;
+  const centerY = size / 2;
 
-  const palettes = {
-    rocky: {
-      base: ['#5a4a4a', '#6a5a5a', '#7a6a6a', '#8a7a7a', '#9a8a8a', '#aa9a9a'],
-      dark: ['#2a2a2a', '#3a3a3a', '#4a4a4a', '#5a5a5a', '#6a6a6a', '#7a7a7a'],
-      light: ['#8a7a7a', '#9a8a8a', '#aa9a9a', '#baaaaa', '#cabaaa', '#dacaa0']
-    },
-    metallic: {
-      metal: ['#7080a0', '#8090b0', '#90a0c0', '#a0b0d0', '#b0c0e0', '#c0d0f0'],
-      iron: ['#505060', '#606070', '#707080', '#808090', '#9090a0', '#a0a0b0'],
-      shine: ['#a0b0d0', '#b0c0e0', '#c0d0f0', '#d0e0ff', '#e0f0ff', '#f0f8ff']
-    },
-    carbonaceous: {
-      carbon: ['#0a0a0a', '#1a1a1a', '#2a2a2a', '#3a3a3a', '#4a4a4a', '#5a5a5a'],
-      dark: ['#000000', '#0a0a0a', '#1a1a1a', '#2a2a2a', '#3a3a3a', '#4a4a4a'],
-      dust: ['#3a3a3a', '#4a4a4a', '#5a5a5a', '#6a6a6a', '#7a7a7a', '#8a8a8a']
-    },
-    icy: {
-      ice: ['#b0c0d0', '#c0d0e0', '#d0e0f0', '#e0f0ff', '#f0f8ff', '#ffffff'],
-      rock: ['#4a4a4a', '#5a5a5a', '#6a6a6a', '#7a7a7a', '#8a8a8a', '#9a9a9a'],
-      frost: ['#d0e0f0', '#e0f0ff', '#f0f8ff', '#f8fcff', '#ffffff', '#ffffff']
-    }
-  };
-
-  const palette = palettes[asteroidType];
+  // Irregular shape parameters
+  const baseRadius = size * 0.35;
+  const irregularity = 0.15 + Math.random() * 0.15;
 
   for (let frame = 0; frame < frames; frame++) {
     const offsetX = frame * size;
-    const centerX = size / 2, centerY = size / 2;
     const time = frame / frames;
     const imageData = ctx.createImageData(size, size);
     const data = imageData.data;
 
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        const dx = x - centerX, dy = y - centerY;
+        const dx = x - centerX;
+        const dy = y - centerY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const angle = Math.atan2(dy, dx) + time * Math.PI * 2;
         const idx = (y * size + x) * 4;
 
-        // Very irregular shape
-        const shapeNoise1 = noise.fbm(Math.cos(angle) * 4, Math.sin(angle) * 4, index, 8);
-        const shapeNoise2 = noise.turbulence(Math.cos(angle * 2) * 3, Math.sin(angle * 2) * 3, index + 50, 7);
-        const shapeNoise3 = noise.ridged(Math.cos(angle * 3) * 2, Math.sin(angle * 3) * 2, index + 100, 6);
-        const irregularRadius = (size * 0.32) * (0.4 + shapeNoise1 * 0.35 + shapeNoise2 * 0.25 + shapeNoise3 * 0.2);
+        // Irregular shape
+        const shapeNoise = noise.fbm(angle * 3, index, 0, 3);
+        const localRadius = baseRadius * (1 + (shapeNoise - 0.5) * irregularity * 2);
 
-        if (dist < irregularRadius) {
-          const surfaceNoise = noise.fbm(x / 10, y / 10, time * 0.5, 12);
-          const boulderNoise = noise.turbulence(x / 6, y / 6, index + 150, 8);
-          const microDetail = noise.fbm(x / 15, y / 15, index + 200, 10);
+        if (dist <= localRadius) {
+          const normalizedDist = dist / localRadius;
+          const z = Math.sqrt(Math.max(0, 1 - normalizedDist * normalizedDist));
 
-          // Heavy cratering
-          const craterNoise = noise.fbm(x / 12, y / 12, index + 250, 7);
-          const craters = craterNoise > 0.82 ? -(craterNoise - 0.82) * 4 : 0;
+          const surfaceNoise = noise.fbm(angle * 5 + time * Math.PI * 2, normalizedDist * 5, index, 3);
 
-          const elevation = surfaceNoise * 0.4 + boulderNoise * 0.3 + microDetail * 0.2 + craters * 0.3;
+          const baseColor = 70 + surfaceNoise * 50;
+          let r = baseColor * 1.1;
+          let g = baseColor;
+          let b = baseColor * 0.9;
 
-          const normalX = (x - centerX) / irregularRadius;
-          const normalY = (y - centerY) / irregularRadius;
-          const lighting = Math.max(0.15, 0.45 + normalX * 0.45 + normalY * 0.25 + elevation * 0.35);
+          // Craters
+          const craterNoise = noise.fbm(angle * 10, normalizedDist * 10, index + 50, 3);
+          if (craterNoise < 0.2) {
+            r *= 0.6; g *= 0.6; b *= 0.6;
+          }
 
-          const terrainKeys = Object.keys(palette);
-          const selectedKey = terrainKeys[Math.floor(Math.abs(elevation) * terrainKeys.length) % terrainKeys.length];
-          const colorArray = palette[selectedKey];
-          const finalColor = hexToRgb(colorArray[Math.floor(Math.abs(surfaceNoise) * (colorArray.length - 1))]);
+          const limbDarkening = 0.3 + 0.7 * Math.pow(z, 0.6);
+          r *= limbDarkening;
+          g *= limbDarkening;
+          b *= limbDarkening;
 
-          data[idx] = finalColor.r * lighting;
-          data[idx + 1] = finalColor.g * lighting;
-          data[idx + 2] = finalColor.b * lighting;
+          data[idx] = Math.min(255, Math.max(0, r));
+          data[idx + 1] = Math.min(255, Math.max(0, g));
+          data[idx + 2] = Math.min(255, Math.max(0, b));
           data[idx + 3] = 255;
         }
       }
@@ -879,100 +982,187 @@ function generateAsteroid(index) {
     ctx.putImageData(imageData, offsetX, 0);
   }
 
-  return canvas;
+  return { canvas, size };
 }
 
-// Main generation
-async function generateAllSprites() {
-  console.log('╔════════════════════════════════════════════════════╗');
-  console.log('║  PIXELVERSUM - ULTRA HIGH DETAIL GENERATOR        ║');
-  console.log('║  Rivers • Lakes • Seas • Mountains • Canyons      ║');
-  console.log('║  Volcanoes • Glaciers • Cities • Glowing Stars    ║');
-  console.log('╚════════════════════════════════════════════════════╝\n');
+// ============================================================================
+// MAIN GENERATION FUNCTIONS
+// ============================================================================
+async function generateStars() {
+  console.log('\n=== GENERATING STARS ===\n');
+  const starsDir = path.join(OUTPUT_DIR, 'stars');
+  fs.mkdirSync(starsDir, { recursive: true });
 
-  ['stars', 'planets', 'moons', 'asteroids'].forEach(dir => {
-    const dirPath = path.join(OUTPUT_DIR, dir);
-    if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-  });
+  const manifest = { type: 'stars', sprites: {} };
 
-  let totalGenerated = 0;
-
-  console.log('\n1. GENERATING GLOWING STARS (1000x1000, 24 frames)...');
   for (const stellarClass of CONFIG.stellarClasses) {
-    const canvas = generateStar(stellarClass);
-    const buffer = canvas.toBuffer('image/png');
-    fs.writeFileSync(path.join(OUTPUT_DIR, 'stars', `star_${stellarClass}.png`), buffer);
-    totalGenerated++;
-  }
-  console.log(`   ✓ ${CONFIG.stellarClasses.length} star sprites`);
+    const { canvas, size } = generateStar(stellarClass);
+    const filename = `star_${stellarClass}.png`;
+    const filepath = path.join(starsDir, filename);
 
-  console.log('\n2. GENERATING PLANETS (600x600, 24 frames) with geological features...');
+    const buffer = canvas.toBuffer('image/png');
+    fs.writeFileSync(filepath, buffer);
+
+    manifest.sprites[stellarClass] = {
+      file: filename,
+      frameWidth: size,
+      frameHeight: size,
+      frameCount: CONFIG.starFrames,
+      variants: 1
+    };
+  }
+
+  fs.writeFileSync(
+    path.join(starsDir, 'manifest.json'),
+    JSON.stringify(manifest, null, 2)
+  );
+
+  console.log(`\nStars complete: ${CONFIG.stellarClasses.length} stellar classes`);
+}
+
+async function generatePlanets() {
+  console.log('\n=== GENERATING PLANETS ===\n');
+  const planetsDir = path.join(OUTPUT_DIR, 'planets');
+  fs.mkdirSync(planetsDir, { recursive: true });
+
+  const manifest = { type: 'planets', sprites: {} };
+
   for (const planetType of CONFIG.planetTypes) {
-    console.log(`   ${planetType}...`);
+    console.log(`  Generating ${planetType} planets...`);
+    manifest.sprites[planetType] = { variants: [] };
+
     for (let i = 0; i < CONFIG.spritesPerPlanetType; i++) {
-      const canvas = generatePlanet(planetType, i);
+      const { canvas, size } = generatePlanet(planetType, i);
+      const filename = `planet_${planetType}_${String(i).padStart(3, '0')}.png`;
+      const filepath = path.join(planetsDir, filename);
+
       const buffer = canvas.toBuffer('image/png');
-      fs.writeFileSync(path.join(OUTPUT_DIR, 'planets', `planet_${planetType}_${String(i).padStart(3, '0')}.png`), buffer);
-      totalGenerated++;
-      if ((i + 1) % 20 === 0) console.log(`     ${i + 1}/${CONFIG.spritesPerPlanetType}`);
-    }
-  }
-  console.log(`   ✓ ${CONFIG.planetTypes.length * CONFIG.spritesPerPlanetType} planet sprites`);
+      fs.writeFileSync(filepath, buffer);
 
-  console.log('\n3. GENERATING MOONS (240x240, 16 frames)...');
-  for (let i = 0; i < CONFIG.spritesPerMoon; i++) {
-    const canvas = generateMoon(i);
-    const buffer = canvas.toBuffer('image/png');
-    fs.writeFileSync(path.join(OUTPUT_DIR, 'moons', `moon_${String(i).padStart(3, '0')}.png`), buffer);
-    totalGenerated++;
-    if ((i + 1) % 20 === 0) console.log(`   ${i + 1}/${CONFIG.spritesPerMoon}`);
-  }
-  console.log(`   ✓ ${CONFIG.spritesPerMoon} moon sprites`);
-
-  console.log('\n4. GENERATING ASTEROIDS (300x300, 12 frames)...');
-  for (let i = 0; i < CONFIG.spritesPerAsteroid; i++) {
-    const canvas = generateAsteroid(i);
-    const buffer = canvas.toBuffer('image/png');
-    fs.writeFileSync(path.join(OUTPUT_DIR, 'asteroids', `asteroid_${String(i).padStart(3, '0')}.png`), buffer);
-    totalGenerated++;
-    if ((i + 1) % 20 === 0) console.log(`   ${i + 1}/${CONFIG.spritesPerAsteroid}`);
-  }
-  console.log(`   ✓ ${CONFIG.spritesPerAsteroid} asteroid sprites`);
-
-  console.log('\n5. GENERATING MANIFEST...');
-  const manifest = {
-    version: '3.0.0',
-    generated: new Date().toISOString(),
-    description: 'Ultra high-detail sprites with rivers, lakes, seas, mountains, canyons, volcanoes, glaciers, cities, and glowing stars',
-    sprites: { stars: {}, planets: {}, moons: {}, asteroids: {} }
-  };
-
-  for (const stellarClass of CONFIG.stellarClasses) {
-    manifest.sprites.stars[stellarClass] = { file: `stars/star_${stellarClass}.png`, frames: 24, width: 1000 * 24, height: 1000 };
-  }
-
-  for (const planetType of CONFIG.planetTypes) {
-    for (let i = 0; i < CONFIG.spritesPerPlanetType; i++) {
-      const key = `${planetType}_${String(i).padStart(3, '0')}`;
-      manifest.sprites.planets[key] = { file: `planets/planet_${planetType}_${String(i).padStart(3, '0')}.png`, frames: 24, width: 600 * 24, height: 600 };
+      manifest.sprites[planetType].variants.push({
+        file: filename,
+        frameWidth: size,
+        frameHeight: size,
+        frameCount: CONFIG.planetFrames
+      });
     }
   }
 
-  for (let i = 0; i < CONFIG.spritesPerMoon; i++) {
-    manifest.sprites.moons[String(i).padStart(3, '0')] = { file: `moons/moon_${String(i).padStart(3, '0')}.png`, frames: 16, width: 240 * 16, height: 240 };
-  }
+  fs.writeFileSync(
+    path.join(planetsDir, 'manifest.json'),
+    JSON.stringify(manifest, null, 2)
+  );
 
-  for (let i = 0; i < CONFIG.spritesPerAsteroid; i++) {
-    manifest.sprites.asteroids[String(i).padStart(3, '0')] = { file: `asteroids/asteroid_${String(i).padStart(3, '0')}.png`, frames: 12, width: 300 * 12, height: 300 };
-  }
-
-  fs.writeFileSync(path.join(OUTPUT_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  console.log('   ✓ manifest.json');
-
-  console.log('\n╔════════════════════════════════════════════════════╗');
-  console.log(`║  ✓ COMPLETE! ${totalGenerated} sprites                        ║`);
-  console.log('║  Location: /public/sprites/                        ║');
-  console.log('╚════════════════════════════════════════════════════╝\n');
+  console.log(`\nPlanets complete: ${CONFIG.planetTypes.length} types x ${CONFIG.spritesPerPlanetType} variants`);
 }
 
-generateAllSprites().catch(console.error);
+async function generateMoons() {
+  console.log('\n=== GENERATING MOONS ===\n');
+  const moonsDir = path.join(OUTPUT_DIR, 'moons');
+  fs.mkdirSync(moonsDir, { recursive: true });
+
+  const manifest = { type: 'moons', sprites: { variants: [] } };
+
+  for (let i = 0; i < CONFIG.spritesPerMoon; i++) {
+    const { canvas, size } = generateMoon(i);
+    const filename = `moon_${String(i).padStart(3, '0')}.png`;
+    const filepath = path.join(moonsDir, filename);
+
+    const buffer = canvas.toBuffer('image/png');
+    fs.writeFileSync(filepath, buffer);
+
+    manifest.sprites.variants.push({
+      file: filename,
+      frameWidth: size,
+      frameHeight: size,
+      frameCount: CONFIG.moonFrames
+    });
+  }
+
+  fs.writeFileSync(
+    path.join(moonsDir, 'manifest.json'),
+    JSON.stringify(manifest, null, 2)
+  );
+
+  console.log(`\nMoons complete: ${CONFIG.spritesPerMoon} variants`);
+}
+
+async function generateAsteroids() {
+  console.log('\n=== GENERATING ASTEROIDS ===\n');
+  const asteroidsDir = path.join(OUTPUT_DIR, 'asteroids');
+  fs.mkdirSync(asteroidsDir, { recursive: true });
+
+  const manifest = { type: 'asteroids', sprites: { variants: [] } };
+
+  for (let i = 0; i < CONFIG.spritesPerAsteroid; i++) {
+    const { canvas, size } = generateAsteroid(i);
+    const filename = `asteroid_${String(i).padStart(3, '0')}.png`;
+    const filepath = path.join(asteroidsDir, filename);
+
+    const buffer = canvas.toBuffer('image/png');
+    fs.writeFileSync(filepath, buffer);
+
+    manifest.sprites.variants.push({
+      file: filename,
+      frameWidth: size,
+      frameHeight: size,
+      frameCount: CONFIG.asteroidFrames
+    });
+  }
+
+  fs.writeFileSync(
+    path.join(asteroidsDir, 'manifest.json'),
+    JSON.stringify(manifest, null, 2)
+  );
+
+  console.log(`\nAsteroids complete: ${CONFIG.spritesPerAsteroid} variants`);
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+async function main() {
+  const args = process.argv.slice(2);
+
+  const generateAll = args.includes('--all') || args.length === 0;
+  const doStars = generateAll || args.includes('--stars');
+  const doPlanets = generateAll || args.includes('--planets');
+  const doMoons = generateAll || args.includes('--moons');
+  const doAsteroids = generateAll || args.includes('--asteroids');
+
+  console.log('╔════════════════════════════════════════════════════════════╗');
+  console.log('║     PIXELVERSUM CELESTIAL SPRITE GENERATOR v6.0            ║');
+  console.log('║     Optimized for fast generation with large sizes         ║');
+  console.log('╚════════════════════════════════════════════════════════════╝');
+  console.log('');
+  console.log('Usage:');
+  console.log('  node generateAllSprites.mjs --all        # Generate everything');
+  console.log('  node generateAllSprites.mjs --stars      # Stars only');
+  console.log('  node generateAllSprites.mjs --planets    # Planets only');
+  console.log('  node generateAllSprites.mjs --moons      # Moons only');
+  console.log('  node generateAllSprites.mjs --asteroids  # Asteroids only');
+  console.log('');
+  console.log(`Generating: ${[
+    doStars && 'stars',
+    doPlanets && 'planets',
+    doMoons && 'moons',
+    doAsteroids && 'asteroids'
+  ].filter(Boolean).join(', ')}`);
+
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+
+  const startTime = Date.now();
+
+  if (doStars) await generateStars();
+  if (doPlanets) await generatePlanets();
+  if (doMoons) await generateMoons();
+  if (doAsteroids) await generateAsteroids();
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log('\n════════════════════════════════════════════════════════════');
+  console.log(`Generation complete in ${elapsed}s`);
+  console.log(`Output: ${OUTPUT_DIR}`);
+  console.log('════════════════════════════════════════════════════════════\n');
+}
+
+main().catch(console.error);
